@@ -8,19 +8,28 @@ logger = logging.getLogger(__name__)
 
 class EquityOptimiser:
     _utility: cp.Objective
-    _constraints: cp.Constraint = []
-    _w: cp.Variable
 
     def __init__(self, expected_returns: np.ndarray, covariance_matrix: np.ndarray):
         """
         :params:
-            expected_returns: A vector of expected asset returns (mean vector).
-            Assume the returns are sampled from a normal distribution with typical stock mean and volatilities.
+            expected_returns:
+                A vector (shape = (n,1)) of expected asset returns (mean vector).
+                Assume the returns are sampled from a normal distribution with typical stock mean and volatilities.
+            covariance_matrix: 
+                An (n,n) np array of covariance between asset returns. Should be positive semi-definite. 
         """
-        self._n = len(expected_returns)
-        self._mu = expected_returns
-        self._sigma = covariance_matrix
+        # validate input
         validation.validate_optimiser_inputs(expected_returns, covariance_matrix)
+
+        # fill data
+        self._n = expected_returns.shape[0]
+        self._mu = expected_returns.reshape(self._n, 1)
+        self._sigma = covariance_matrix.reshape(self._n, self._n)
+        self._constraints: cp.Constraint = []
+        self._w = cp.Variable(self._n)
+        self._utility = cp.Objective
+
+        # setup base objective function and criteria
         self.add_criteria_baseline()
         self.add_utility_baseline()
         
@@ -30,19 +39,20 @@ class EquityOptimiser:
         Constraints:
             sum(_w) = 1
         """
-        self._w = cp.Variable((self._n, 1))
         self._constraints += [cp.sum(self._w) == 1]
 
-
-    def add_criteria_weights():
+    def add_criteria_weights(self, w_min:float = None, w_max: float = None):
         """
         Weight limits on individual assets (e.g., no more than 10% in any single asset).
         Bounds on asset weights.
-        w <= w_max
+        w_min <= w <= w_max
         """
-        pass
+        if w_min is not None:
+            self._constraints += [w_min <= self._w]
+        if w_max is not None:
+            self._constraints += [self._w <= w_max]
 
-    def add_criteria_return_target():
+    def add_criteria_return_target(mu_min: float):
         """
         A minimum return target for the portfolio.
         A target portfolio return.
@@ -84,9 +94,10 @@ class EquityOptimiser:
         Objective Function:
             w^T * mu - lambda * w^T * sigma * w     (lambda is risk parameter)
         """
-        self._lambda = cp.Parameter
+        self._lambda = cp.Parameter(nonneg=True) # (ensures concavity for maximisation problem)
         self._return = self._w.T @ self._mu
-        self._risk = self._lambda * cp.quad_form(self._w, self._sigma)
+        self._risk = (self._w.T @ self._sigma @ self._w)
+        self._risk = self._lambda * self._risk
         self._utility = self._return - self._risk
 
     def modify_utility_txn_costs():
@@ -102,7 +113,7 @@ class EquityOptimiser:
         """
         pass
 
-    def optimise(self) -> Tuple[np.ndarray, float, float]:
+    def optimise(self, lambda_: float = 1.0) -> Tuple[np.ndarray, float, float]:
         """
         Run optimiser and return optimal weights.
         Optimization Approach:
@@ -116,9 +127,12 @@ class EquityOptimiser:
             E(return): 
             E(risk/variance):
         """
-        self._lambda = 1
+        validation.validate_lambda(lambda_)
+        self._lambda = lambda_
         problem = cp.Problem(cp.Maximize(self._utility), self._constraints)
-        return problem.solve()
-
+        problem.solve()
+        if self._w.value is None:
+            raise ValueError("Optimization failed")
+        return self._w.value
 
 

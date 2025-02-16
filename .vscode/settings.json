@@ -1,7 +1,14 @@
 {
+    "python.testing.pytestEnabled": true,
     "python.testing.pytestArgs": [
-        "test/system"
+      "test/system",
+      "--cov=equity-optimiser",
+      "--cov-report=term-missing"
     ],
-    "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
-}
+    "python.analysis.extraPaths": ["./src"],
+    "python.defaultInterpreterPath": ".venv/bin/python",
+    "terminal.integrated.env.linux": {
+      "PYTHONPATH": "${workspaceFolder}/src:${env:PYTHONPATH}"
+    }
+  }
+  
