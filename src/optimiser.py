@@ -34,12 +34,14 @@ class EquityOptimiser:
         self.add_criteria_baseline()
         self.add_utility_baseline()
 
+    # constraints
     def add_criteria_baseline(self):
         """
         Constraints:
-            sum(_w) = 1
+            1^T * _w = 1
         """
-        self._constraints += [cp.sum(self._w) == 1]
+        one_vec = np.full(self._n, 1)
+        self._constraints += [one_vec@self._w.T == 1]
 
     def add_criteria_weights(self, w_min: Optional[float] = None, w_max: Optional[float] = None):
         """
@@ -60,13 +62,15 @@ class EquityOptimiser:
         """
         self._constraints += [self._return >= mu_min]
 
-    def add_criteria_risk_level():
+    def add_criteria_risk_level(self, sigma_max: float):
         """
         A maximum risk level (maximum portfolio variance).
         A maximum allowable portfolio variance.
         w^T * sigma * w <= sigma_max^2  (max variance -> sigma_max^2)
+        :sigma_max maximum sqrt(variance)
         """
-        pass
+        self._constraints += [self._risk <= sigma_max*sigma_max]
+        
 
     def add_criteria_factor_exposure():
         """
@@ -89,6 +93,7 @@ class EquityOptimiser:
         """
         pass
 
+    # objectives
     def add_utility_baseline(self):
         """
         Objective Function:
@@ -114,6 +119,7 @@ class EquityOptimiser:
         """
         pass
 
+    # solve
     def optimise(self, lambda_: float = 1.0) -> Tuple[np.ndarray, float, float]:
         """
         Run optimiser and return optimal weights.
@@ -130,8 +136,16 @@ class EquityOptimiser:
         """
         validation.validate_lambda(lambda_)
         self._lambda.value = lambda_
+
         problem = cp.Problem(cp.Maximize(self._utility), self._constraints)
+        # let cvxpy choose automatically or force interior-points by solver=cp.CLARABEL etc
         problem.solve()
+
         if self._w.value is None:
             raise ValueError("Optimization failed")
+
+        logger.info(f"Solver used: {problem.solver_stats}")
+        logger.info(f"optimal weights: {self._w.value}")
+        logger.info(f"mu: {self._return.value[0]}, sigma: {self._risk.value}")
+
         return self._w.value, self._return.value[0], self._risk.value
