@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Optional, Tuple
 import numpy as np
 import validation
 import cvxpy as cp
@@ -41,7 +41,7 @@ class EquityOptimiser:
         """
         self._constraints += [cp.sum(self._w) == 1]
 
-    def add_criteria_weights(self, w_min: float = None, w_max: float = None):
+    def add_criteria_weights(self, w_min: Optional[float] = None, w_max: Optional[float] = None):
         """
         Weight limits on individual assets (e.g., no more than 10% in any single asset).
         Bounds on asset weights.
@@ -52,13 +52,13 @@ class EquityOptimiser:
         if w_max is not None:
             self._constraints += [self._w <= w_max]
 
-    def add_criteria_return_target(mu_min: float):
+    def add_criteria_return_target(self, mu_min: float):
         """
         A minimum return target for the portfolio.
         A target portfolio return.
         w^T * mu >= mu_min              (min asset return -> mu_max)
         """
-        pass
+        self._constraints += [self._return >= mu_min]
 
     def add_criteria_risk_level():
         """
@@ -99,8 +99,7 @@ class EquityOptimiser:
         )  # (ensures concavity for maximisation problem)
         self._return = self._w.T @ self._mu
         self._risk = self._w.T @ self._sigma @ self._w
-        self._risk = self._lambda * self._risk
-        self._utility = self._return - self._risk
+        self._utility = self._return - self._lambda * self._risk
 
     def modify_utility_txn_costs():
         """
@@ -130,9 +129,9 @@ class EquityOptimiser:
             E(risk/variance):
         """
         validation.validate_lambda(lambda_)
-        self._lambda = lambda_
+        self._lambda.value = lambda_
         problem = cp.Problem(cp.Maximize(self._utility), self._constraints)
         problem.solve()
         if self._w.value is None:
             raise ValueError("Optimization failed")
-        return self._w.value
+        return self._w.value, self._return.value[0], self._risk.value
