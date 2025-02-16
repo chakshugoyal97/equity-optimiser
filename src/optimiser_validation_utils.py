@@ -1,14 +1,16 @@
+import cmath
 import numpy as np
 import logging
 
-logger = logging.getLogger(__name__)
+from constants import TOL
 
+logger = logging.getLogger(__name__)
 
 class InputError(Exception):
     pass
 
 
-def _is_PSD(A: np.ndarray, tol: float = 1e-8):
+def _is_PSD(A: np.ndarray, tol: float = TOL):
     """
     Check if a np array is positive semi-definite.
     A matrix M is PSD if it is symmetrix and x^T.M.x >= 0 for all x in R^n
@@ -38,3 +40,11 @@ def validate_optimiser_inputs(var: np.ndarray, covar: np.ndarray):
 def validate_lambda(lambda_: float):
     if lambda_ < 0:
         raise InputError("lambda cannot be negative")
+
+def validate_adv(w_prev: np.ndarray, adv: np.ndarray, n: int):
+    if not cmath.isclose(np.sum(w_prev), 1.0, TOL):
+        raise InputError("prev weights do not sum to 1")
+    if not w_prev.shape == (n,):
+        raise InputError(f"Incorrect w_prev shape, expected {(n,)}, got {w_prev.shape}")
+    if not adv.shape == (n,):
+        raise InputError(f"Incorrect ADV shape, expected {(n,)}, got {adv.shape}")

@@ -1,6 +1,7 @@
+import math
 from typing import Optional, Tuple
 import numpy as np
-import validation
+import optimiser_validation_utils
 import cvxpy as cp
 import logging
 
@@ -8,8 +9,6 @@ logger = logging.getLogger(__name__)
 
 
 class EquityOptimiser:
-    _utility: cp.Objective
-
     def __init__(self, expected_returns: np.ndarray, covariance_matrix: np.ndarray):
         """
         :params:
@@ -20,7 +19,7 @@ class EquityOptimiser:
                 An (n,n) np array of covariance between asset returns. Should be positive semi-definite.
         """
         # validate input
-        validation.validate_optimiser_inputs(expected_returns, covariance_matrix)
+        optimiser_validation_utils.validate_optimiser_inputs(expected_returns, covariance_matrix)
 
         # fill data
         self._n = expected_returns.shape[0]
@@ -54,22 +53,27 @@ class EquityOptimiser:
         if w_max is not None:
             self._constraints += [self._w <= w_max]
 
-    def add_criteria_return_target(self, mu_min: float):
+    def add_criteria_return_target(self, mu_min: float, mu_max: Optional[float]=None):
         """
         A minimum return target for the portfolio.
         A target portfolio return.
         w^T * mu >= mu_min              (min asset return -> mu_max)
         """
-        self._constraints += [self._return >= mu_min]
+        self._constraints += [mu_min <= self._return]
+        if mu_max:
+            self._constraints += [self._return <= mu_max]
 
-    def add_criteria_risk_level(self, sigma_max: float):
+    def add_criteria_risk_level(self, sigma_max: float, sigma_min: Optional[float] = None):
         """
-        A maximum risk level (maximum portfolio variance).
-        A maximum allowable portfolio variance.
+        A maximum risk level (maximum portfolio variance). 
+        As the constraint is not linear, this will trigger a convex solver.
         w^T * sigma * w <= sigma_max^2  (max variance -> sigma_max^2)
-        :sigma_max maximum sqrt(variance)
+        :sigma_max: 
+            maximum standard deviation or sqrt(variance)
         """
         self._constraints += [self._risk <= sigma_max*sigma_max]
+        if sigma_min:
+            self._constraints += [sigma_min*sigma_min <= self._risk]
         
 
     def add_criteria_factor_exposure():
@@ -81,27 +85,33 @@ class EquityOptimiser:
         """
         pass
 
-    def add_criteria_max_adv_equity():
+    def add_criteria_max_adv_equity(self, w_prev: np.ndarray, ADV: np.ndarray, max_adv: float):
         """
         Eg - No more than 5% of the ADV traded for a single stock
         """
+        optimiser_validation_utils.validate_adv(w_prev, ADV, self._n)
         pass
 
-    def add_criteria_limit_top_k_allocations():
+    def add_criteria_limit_top_k_allocations(self, k: int, max_limit: float):
         """
-        Sum of the k largest long/short allocations should not exceed a given target number
+        Sum of the k largest long/short allocations should not exceed a given target number.
+        
+        Let t be the threshold cutoff for top-k allocations, then this can be represented by:
+        SUM[ max(w_i - t, 0) ] + t*k <= max_limit, t >= 0
+
+        Or use cp.sum_largest.
         """
-        pass
+        self._constraints += [cp.sum_largest(cp.abs(self._w), k) <= max_limit]
 
     # objectives
     def add_utility_baseline(self):
         """
         Objective Function:
-            w^T * mu - lambda * w^T * sigma * w     (lambda is risk parameter)
+            w^T * mu - lambda * w^T * sigma * w     ; where lambda is a +ve, risk parameter
         """
         self._lambda = cp.Parameter(
             nonneg=True
-        )  # (ensures concavity for maximisation problem)
+        )  # (to ensure concavity for maximisation problem, and calm down cvxpy)
         self._return = self._w.T @ self._mu
         self._risk = self._w.T @ self._sigma @ self._w
         self._utility = self._return - self._lambda * self._risk
@@ -130,22 +140,22 @@ class EquityOptimiser:
             expected_returns: an ndarray(n) of E(stock-i returns)
             covariance: an (nxn) numpy matrix of Cov(stock-i,stock-j)
         :returns:
-            optimal_weights:
-            E(return):
-            E(risk/variance):
+            optimal_weights: weights vector shape=(n,) for each stock
+            E(return): optimal portfolio expected return
+            E(risk/variance): optimal portfolio standard_deviation (sqrt(variance))
         """
-        validation.validate_lambda(lambda_)
+        optimiser_validation_utils.validate_lambda(lambda_)
         self._lambda.value = lambda_
 
         problem = cp.Problem(cp.Maximize(self._utility), self._constraints)
         # let cvxpy choose automatically or force interior-points by solver=cp.CLARABEL etc
-        problem.solve()
+        u = problem.solve()
 
         if self._w.value is None:
             raise ValueError("Optimization failed")
 
-        logger.info(f"Solver used: {problem.solver_stats}")
+        logger.debug(f"Solver used: {problem.solver_stats.solver_name}, utililty: {u}")
         logger.info(f"optimal weights: {self._w.value}")
-        logger.info(f"mu: {self._return.value[0]}, sigma: {self._risk.value}")
+        logger.info(f"mu: {self._return.value[0]}, sigma: {math.sqrt(self._risk.value)}")
 
-        return self._w.value, self._return.value[0], self._risk.value
+        return self._w.value, self._return.value[0], math.sqrt(self._risk.value)

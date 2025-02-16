@@ -1,18 +1,20 @@
 from typing import Optional
 import numpy as np
 import pytest
+from constants import TOL
 from optimiser import EquityOptimiser
 import logging
 
 logger = logging.getLogger(__name__)
 
-tol = 1e-4
+np.random.seed(73) # for reproducibility
 
 def _get_return_and_covariance(n: int, mu: float, sigma: float):
-    # normal sampling from N(mu, sigma)
+    # normal sampling from N(mu, sigma^2)
     expected_returns = sigma * np.random.randn(n, 1) + mu
 
-    # for symmetrix, PSD arrays
+    # for symmetrix, PSD arrays 
+    # needed because the risk term, (w^T @ Cov @ w^T) needs to be >= 0 always for convex optimsation
     covariance_matrix = np.random.rand(n, n)
     covariance_matrix = np.dot(covariance_matrix, covariance_matrix.T)
 
@@ -24,7 +26,6 @@ def _get_return_and_covariance(n: int, mu: float, sigma: float):
 )
 def test_optimiser_basic(n: int, mu: float, sigma: float):
     # GIVEN
-    n = 3
     expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
     eo = EquityOptimiser(expected_returns, covariance_matrix)
 
@@ -32,17 +33,14 @@ def test_optimiser_basic(n: int, mu: float, sigma: float):
     w, mu, sigma = eo.optimise()
 
     # THEN
-    logger.info(f"optimal weights: {w}")
-    logger.info(f"mu: {mu}, sigma: {sigma}")
-
     assert w.shape == (n,)
 
-
-@pytest.mark.parametrize("w_min,w_max", [(-1, 1), (-5, None), (None, 3)])
-def test_optimiser_weight_limits(w_min: Optional[float], w_max: Optional[float]):
+@pytest.mark.parametrize("n,mu,sigma,w_min,w_max", [
+    (10, 0.1, 0.2, -1, 1), (10, 0.1, 0.2, -5, None), (10, 0.1, 0.2, None, 3)]
+)
+def test_optimiser_weight_limits(n: int, mu: float, sigma: float, w_min: Optional[float], w_max: Optional[float]):
     # GIVEN
-    n = 3
-    expected_returns, covariance_matrix = _get_return_and_covariance(n, 0.1, 0.2)
+    expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
     eo = EquityOptimiser(expected_returns, covariance_matrix)
     eo.add_criteria_weights(w_min, w_max)
 
@@ -50,21 +48,17 @@ def test_optimiser_weight_limits(w_min: Optional[float], w_max: Optional[float])
     w, mu, sigma = eo.optimise()
 
     # THEN
-    # logger.info(f"optimal weights: {w}")
-    # logger.info(f"mu: {mu}, sigma: {sigma}")
-
     assert w.shape == (n,)
     if w_min:
-        assert np.all(w_min - tol <= w)
+        assert np.all(w_min - TOL <= w)
     if w_max:
-        assert np.all(w <= w_max + tol)
+        assert np.all(w <= w_max + TOL)
 
 @pytest.mark.parametrize(
     "n,mu,sigma,mu_min", [(15, 0.07, 0.05, 0.1), (20, 0.5, 0.8, 0.6)]
 )
 def test_optimiser_min_return(n: int, mu: float, sigma: float, mu_min: float):
     # GIVEN
-    n = 3
     expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
     eo = EquityOptimiser(expected_returns, covariance_matrix)
 
@@ -73,18 +67,14 @@ def test_optimiser_min_return(n: int, mu: float, sigma: float, mu_min: float):
     w, mu, sigma = eo.optimise()
 
     # THEN
-    # logger.info(f"optimal weights: {w}")
-    # logger.info(f"mu: {mu}, sigma: {sigma}")
     assert w.shape == (n,)
-    assert mu >= mu_min - tol
+    assert mu >= mu_min - TOL
 
 @pytest.mark.parametrize(
     "n,mu,sigma,sigma_max", [(15, 0.07, 0.05, 0.44), (20, 0.5, 0.8, 0.6)]
 )
 def test_optimiser_max_risk(n: int, mu: float, sigma: float, sigma_max: float):
-    np.random.seed(67)
     # GIVEN
-    n = 3
     expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
     eo = EquityOptimiser(expected_returns, covariance_matrix)
 
@@ -93,7 +83,26 @@ def test_optimiser_max_risk(n: int, mu: float, sigma: float, sigma_max: float):
     w, mu, sigma = eo.optimise()
 
     # THEN
-    # logger.info(f"optimal weights: {w}")
-    # logger.info(f"mu: {mu}, sigma: {sigma}")
     assert w.shape == (n,)
-    assert sigma - tol <= sigma_max
+    assert (sigma - TOL) <= sigma_max
+
+@pytest.mark.parametrize(
+    "n,mu,sigma,k,max_limit", [(10, 0.1, 0.5, 3, 0.6)]
+)
+def test_optimiser_top_k(n: int, mu: float, sigma: float, k: int, max_limit: float):
+    # GIVEN
+    expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
+    eo = EquityOptimiser(expected_returns, covariance_matrix)
+
+    # WHEN
+    eo.add_criteria_limit_top_k_allocations(k, max_limit)
+    eo.add_criteria_weights(0, 0.3)
+    eo.add_criteria_return_target(0.25, 0.26)
+    eo.add_criteria_risk_level(1.9)
+    w, mu, sigma = eo.optimise(0.05)
+
+    # THEN
+    assert w.shape == (n,)
+    w_top_k = np.sum(np.sort(np.abs(w))[-k:])
+    assert w_top_k <= max_limit + TOL
+
