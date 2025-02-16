@@ -1,9 +1,11 @@
+import logging
 import math
 from typing import Optional, Tuple
-import numpy as np
-import optimiser_validation_utils
+
 import cvxpy as cp
-import logging
+import numpy as np
+
+import optimiser_validation_utils
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +21,9 @@ class EquityOptimiser:
                 An (n,n) np array of covariance between asset returns. Should be positive semi-definite.
         """
         # validate input
-        optimiser_validation_utils.validate_optimiser_inputs(expected_returns, covariance_matrix)
+        optimiser_validation_utils.validate_optimiser_inputs(
+            expected_returns, covariance_matrix
+        )
 
         # fill data
         self._n = expected_returns.shape[0]
@@ -40,9 +44,11 @@ class EquityOptimiser:
             1^T * _w = 1
         """
         one_vec = np.full(self._n, 1)
-        self._constraints += [one_vec@self._w.T == 1]
+        self._constraints += [one_vec @ self._w.T == 1]
 
-    def add_criteria_weights(self, w_min: Optional[float] = None, w_max: Optional[float] = None):
+    def add_criteria_weights(
+        self, w_min: Optional[float] = None, w_max: Optional[float] = None
+    ):
         """
         Weight limits on individual assets (e.g., no more than 10% in any single asset).
         Bounds on asset weights.
@@ -53,7 +59,7 @@ class EquityOptimiser:
         if w_max is not None:
             self._constraints += [self._w <= w_max]
 
-    def add_criteria_return_target(self, mu_min: float, mu_max: Optional[float]=None):
+    def add_criteria_return_target(self, mu_min: float, mu_max: Optional[float] = None):
         """
         A minimum return target for the portfolio.
         A target portfolio return.
@@ -63,18 +69,19 @@ class EquityOptimiser:
         if mu_max:
             self._constraints += [self._return <= mu_max]
 
-    def add_criteria_risk_level(self, sigma_max: float, sigma_min: Optional[float] = None):
+    def add_criteria_risk_level(
+        self, sigma_max: float, sigma_min: Optional[float] = None
+    ):
         """
-        A maximum risk level (maximum portfolio variance). 
+        A maximum risk level (maximum portfolio variance).
         As the constraint is not linear, this will trigger a convex solver.
         w^T * sigma * w <= sigma_max^2  (max variance -> sigma_max^2)
-        :sigma_max: 
+        :sigma_max:
             maximum standard deviation or sqrt(variance)
         """
-        self._constraints += [self._risk <= sigma_max*sigma_max]
+        self._constraints += [self._risk <= sigma_max * sigma_max]
         if sigma_min:
-            self._constraints += [sigma_min*sigma_min <= self._risk]
-        
+            self._constraints += [sigma_min * sigma_min <= self._risk]
 
     def add_criteria_factor_exposure():
         """
@@ -85,7 +92,9 @@ class EquityOptimiser:
         """
         pass
 
-    def add_criteria_max_adv_equity(self, w_prev: np.ndarray, ADV: np.ndarray, max_adv: float):
+    def add_criteria_max_adv_equity(
+        self, w_prev: np.ndarray, ADV: np.ndarray, max_adv: float
+    ):
         """
         Eg - No more than 5% of the ADV traded for a single stock
         """
@@ -95,7 +104,7 @@ class EquityOptimiser:
     def add_criteria_limit_top_k_allocations(self, k: int, max_limit: float):
         """
         Sum of the k largest long/short allocations should not exceed a given target number.
-        
+
         Let t be the threshold cutoff for top-k allocations, then this can be represented by:
         SUM[ max(w_i - t, 0) ] + t*k <= max_limit, t >= 0
 
@@ -156,6 +165,8 @@ class EquityOptimiser:
 
         logger.debug(f"Solver used: {problem.solver_stats.solver_name}, utililty: {u}")
         logger.info(f"optimal weights: {self._w.value}")
-        logger.info(f"mu: {self._return.value[0]}, sigma: {math.sqrt(self._risk.value)}")
+        logger.info(
+            f"mu: {self._return.value[0]}, sigma: {math.sqrt(self._risk.value)}"
+        )
 
         return self._w.value, self._return.value[0], math.sqrt(self._risk.value)
