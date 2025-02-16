@@ -2,7 +2,9 @@ import numpy as np
 import pytest
 from optimiser import EquityOptimiser
 import logging
+
 logger = logging.getLogger(__name__)
+
 
 def _get_return_and_covariance(n, mu, sigma):
     # normal sampling from N(mu, sigma)
@@ -14,9 +16,10 @@ def _get_return_and_covariance(n, mu, sigma):
 
     return expected_returns, covariance_matrix
 
-@pytest.mark.parametrize('n,mu,sigma', [
-    (3, 0.1, 0.2), (15, 0.07, 0.05), (20, 0.5, 0.8)
-])
+
+@pytest.mark.parametrize(
+    "n,mu,sigma", [(3, 0.1, 0.2), (15, 0.07, 0.05), (20, 0.5, 0.8)]
+)
 def test_optimiser_basic(n, mu, sigma):
     # GIVEN
     n = 3
@@ -30,9 +33,8 @@ def test_optimiser_basic(n, mu, sigma):
     logger.info(f"optimal weights: {w}")
     assert w.shape == (n,)
 
-@pytest.mark.parametrize('w_min,w_max', [
-    (-1, 1), (-5, None), (None, 3)
-])
+
+@pytest.mark.parametrize("w_min,w_max", [(-1, 1), (-5, None), (None, 3)])
 def test_optimiser_weight_limits(w_min, w_max):
     # GIVEN
     n = 3

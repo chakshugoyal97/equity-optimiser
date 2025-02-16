@@ -6,6 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class EquityOptimiser:
     _utility: cp.Objective
 
@@ -15,8 +16,8 @@ class EquityOptimiser:
             expected_returns:
                 A vector (shape = (n,1)) of expected asset returns (mean vector).
                 Assume the returns are sampled from a normal distribution with typical stock mean and volatilities.
-            covariance_matrix: 
-                An (n,n) np array of covariance between asset returns. Should be positive semi-definite. 
+            covariance_matrix:
+                An (n,n) np array of covariance between asset returns. Should be positive semi-definite.
         """
         # validate input
         validation.validate_optimiser_inputs(expected_returns, covariance_matrix)
@@ -32,7 +33,6 @@ class EquityOptimiser:
         # setup base objective function and criteria
         self.add_criteria_baseline()
         self.add_utility_baseline()
-        
 
     def add_criteria_baseline(self):
         """
@@ -41,7 +41,7 @@ class EquityOptimiser:
         """
         self._constraints += [cp.sum(self._w) == 1]
 
-    def add_criteria_weights(self, w_min:float = None, w_max: float = None):
+    def add_criteria_weights(self, w_min: float = None, w_max: float = None):
         """
         Weight limits on individual assets (e.g., no more than 10% in any single asset).
         Bounds on asset weights.
@@ -62,7 +62,7 @@ class EquityOptimiser:
 
     def add_criteria_risk_level():
         """
-        A maximum risk level (maximum portfolio variance). 
+        A maximum risk level (maximum portfolio variance).
         A maximum allowable portfolio variance.
         w^T * sigma * w <= sigma_max^2  (max variance -> sigma_max^2)
         """
@@ -79,7 +79,7 @@ class EquityOptimiser:
 
     def add_criteria_max_adv_equity():
         """
-        Eg - No more than 5% of the ADV traded for a single stock 
+        Eg - No more than 5% of the ADV traded for a single stock
         """
         pass
 
@@ -94,9 +94,11 @@ class EquityOptimiser:
         Objective Function:
             w^T * mu - lambda * w^T * sigma * w     (lambda is risk parameter)
         """
-        self._lambda = cp.Parameter(nonneg=True) # (ensures concavity for maximisation problem)
+        self._lambda = cp.Parameter(
+            nonneg=True
+        )  # (ensures concavity for maximisation problem)
         self._return = self._w.T @ self._mu
-        self._risk = (self._w.T @ self._sigma @ self._w)
+        self._risk = self._w.T @ self._sigma @ self._w
         self._risk = self._lambda * self._risk
         self._utility = self._return - self._risk
 
@@ -123,8 +125,8 @@ class EquityOptimiser:
             expected_returns: an ndarray(n) of E(stock-i returns)
             covariance: an (nxn) numpy matrix of Cov(stock-i,stock-j)
         :returns:
-            optimal_weights: 
-            E(return): 
+            optimal_weights:
+            E(return):
             E(risk/variance):
         """
         validation.validate_lambda(lambda_)
@@ -134,5 +136,3 @@ class EquityOptimiser:
         if self._w.value is None:
             raise ValueError("Optimization failed")
         return self._w.value
-
-
