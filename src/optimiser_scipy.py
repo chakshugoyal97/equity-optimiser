@@ -23,12 +23,13 @@ class EquityOptimiser:
 
         # Store data
         self._n = expected_returns.shape[0]
-        self._mu = expected_returns
-        self._sigma = covariance_matrix
+        self._mu = expected_returns.reshape(self._n, 1)
+        self._sigma = covariance_matrix.reshape(self._n, self._n)
         self._constraints = []
         self._bounds = None
-        self._lambda = 1.0  # Default risk aversion parameter
-        self._txn_cost = None  # Transaction cost vector
+        self._lambda = 1.0  # risk parameter
+        self._txn_cost = np.full(self._n, 0)  # txn cost
+
 
     def _objective(self, w):
         """
@@ -36,11 +37,8 @@ class EquityOptimiser:
         Maximize: w^T * mu - lambda * w^T * sigma * w - sum(c1_i * |w_i|) - sum(c2_i * w_i^2)
         scipy.optimize.minimize minimizes functions, so we return the negative of this.
         """
-        base_utility = w @ self._mu - self._lambda * w.T @ self._sigma @ w
-        
-        # Apply transaction costs if set
-        if self._txn_cost is not None:
-            base_utility -= np.sum(self._txn_cost * np.abs(w))
+        base_utility = w @ self._mu - self._lambda * w.T @ self._sigma @ w \
+            - np.sum(self._txn_cost * np.abs(w))
 
         return -base_utility
 
@@ -88,18 +86,30 @@ class EquityOptimiser:
         """ Constraint to limit the sum of the k largest long/short allocations """
         self._constraints.append({'type': 'ineq', 'fun': lambda w: self._top_k_allocations_constraint(w, k, max_limit)})
 
+    def add_criteria_factor_exposure():
+        """
+        Control for industry/factor exposure.
+        :params:
+            factor_matrix: Factor exposures for each of the assets. Assume a factor loading matrix of 5-10 factors with randomly sampled values.
+            exposure_constraint: Maximum/Minimum exposure to a factor
+        """
+        pass
+
     def modify_utility_txn_costs(self, txn_cost: np.ndarray):
         """
         Modify the objective function to include transaction costs.
         :params:
-            txn_cost: A (n,) vector where each element represents a linear cost per asset.
-            txn_cost_quadratic: A (n,) vector where each element represents a quadratic cost per asset.
+            txn_cost: A (n,) vector where each element represents cost per asset.
         """
-        if txn_cost is not None:
-            if len(txn_cost) != self._n:
-                raise ValueError("Transaction cost linear vector must match asset count")
-            self._txn_cost = txn_cost
+        if len(txn_cost) != self._n:
+            raise ValueError("Transaction cost vector must match asset count")
+        self._txn_cost = txn_cost
 
+    def modify_utility_reduce_turnover():
+        """
+        Reduction in turnover of the portfolio.
+        """
+        pass
 
     def optimise(self, lambda_: float = 1.0) -> Tuple[np.ndarray, float, float]:
         """

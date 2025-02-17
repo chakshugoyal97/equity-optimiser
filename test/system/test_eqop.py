@@ -155,4 +155,5 @@ def test_optimiser_txn_costs(
     
     # Ensure transaction costs impact the portfolio:
     txn_cost_impact = np.sum(txn_cost * np.abs(w))
-    assert txn_cost_impact > 0
+    assert txn_cost_impact > 0  # Transaction costs should penalize large weights
+
