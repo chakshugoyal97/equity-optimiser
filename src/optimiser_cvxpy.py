@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class EquityOptimiser:
-    def __init__(self, expected_returns: np.ndarray, covariance_matrix: np.ndarray):
+    def __init__(self, expected_returns: np.ndarray, covariance_matrix: np.ndarray, prev_weights: Optional[np.ndarray] = None):
         """
         :params:
             expected_returns:
@@ -19,10 +19,12 @@ class EquityOptimiser:
                 Assume the returns are sampled from a normal distribution with typical stock mean and volatilities.
             covariance_matrix:
                 An (n,n) np array of covariance between asset returns. Should be positive semi-definite.
+            prev_weights:
+                Previous or existing weights. Required for certain constraints.
         """
         # validate input
         optimiser_validation_utils.validate_optimiser_inputs(
-            expected_returns, covariance_matrix
+            expected_returns, covariance_matrix, prev_weights
         )
 
         # fill data
@@ -30,12 +32,14 @@ class EquityOptimiser:
         self._mu = expected_returns.reshape(self._n, 1)
         self._sigma = covariance_matrix.reshape(self._n, self._n)
         self._constraints: cp.Constraint = []
+
+        self._w_prev = prev_weights if prev_weights is not None else np.zeros(self._n)
         self._w = cp.Variable(self._n)
         self._utility = cp.Objective
 
         # setup base objective function and criteria
         self.add_criteria_baseline()
-        self.add_utility_baseline()
+        self.add_objective_baseline()
 
     # constraints
     def add_criteria_baseline(self):
@@ -43,8 +47,7 @@ class EquityOptimiser:
         Constraints:
             1^T * _w = 1
         """
-        one_vec = np.full(self._n, 1)
-        self._constraints += [one_vec @ self._w.T == 1]
+        self._constraints += [cp.sum(self._w) == 1]
 
     def add_criteria_weights(
         self, w_min: Optional[float] = None, w_max: Optional[float] = None
@@ -55,9 +58,9 @@ class EquityOptimiser:
         w_min <= w <= w_max
         """
         if w_min is not None:
-            self._constraints += [w_min <= self._w]
+            self._constraints += [w_min <= cp.min(self._w)]
         if w_max is not None:
-            self._constraints += [self._w <= w_max]
+            self._constraints += [cp.max(self._w) <= w_max]
 
     def add_criteria_return_target(self, mu_min: float, mu_max: Optional[float] = None):
         """
@@ -83,32 +86,37 @@ class EquityOptimiser:
         if sigma_min:
             self._constraints += [sigma_min * sigma_min <= self._risk]
 
-    def add_criteria_factor_exposure():
+    def add_criteria_factor_exposure(self, factor_matrix: np.ndarray, min_exposure: Optional[np.ndarray], max_exposure: Optional[np.ndarray]):
         """
         Control for industry/factor exposure.
         :params:
-            factor_matrix: Factor exposures for each of the assets. Assume a factor loading matrix of 5-10 factors with randomly sampled values.
-            exposure_constraint: Maximum/Minimum exposure to a factor
+            factor_matrix: Factor exposures for each of the assets with shape = (f,n) where f is the # of factors
+            min_exposure: minimum exposure vector to each factor, shape (f,)
+            max_exposure: maximum exposure vector to each factor, shape (f,)
         """
-        pass
+        if min_exposure is not None:
+            self._constraints += [min_exposure <= factor_matrix @ self._w]
+        if max_exposure is not None:
+            self._constraints += [factor_matrix @ self._w <= max_exposure]
 
-    def add_criteria_max_adv_equity(self, max_adv: float):
+    def add_criteria_max_adv_equity(self, limit: float, volume: float, adv: np.ndarray):
         """
-        For example, no more than 5% of the ADV traded for a single stock. There could be multiple interpretations to this.
-        As the interpretation 2 is simpler and more reasonable based on the input data that's mentioned, that's the one we implement.
-        Interpretation 1:
-            If a stock i, has an adv-i in the market overall (for eg. GOOG ADV is 2B USD), then we cannot trade more than max_adv * adv-i of that stock.
-                -> need to know total volume of portfolio, previous day/current prices, etc...
-        Interpration 2:
-            As the portfolio is long/short, total volume that we trade is [|w_+| + |w_-|] * V, where V is the initial amount we began with.
-            ADV for a stock is the amount of stock traded relative to the overall volume of the portfolio. Which means,
-            |w_i|*V / ([|w_+| + |w_-|] * V) <= max_adv
-            <=> |w_i| / ([|w_+| + |w_-|]) <= max_adv
+            If a stock i, has an adv-i in the market overall (for eg. GOOG ADV is 2B USD), 
+            then we cannot trade more than max_adv * adv-i of that stock.
+            |w_delta| * volume <= limit * max_adv
+            :params:
+                limit: adv multiple limit that is allowed to be traded, for ex 0.05 if setting to 5% of ADV
+                w_prev: previous stock weights, should sum to 1 with shape (n,) 
+                volume: net asset value of the portfolio
+                max_adv: market data - vector of adv traded per stock, should have shape (n,)
+        """
+        assert limit >= 0 and limit <= 1
+        assert adv.shape == (self._n,)
 
-        Beware, this is not convex anymore. Don't use it.
-        """
-        total_volume = cp.norm(self._w, 1)
-        self._constraints += [cp.max(cp.abs(self._w)) <= max_adv * total_volume]
+        volume_traded = cp.abs(self._w - self._w_prev) * volume
+        volume_permissible = limit * adv
+        self._constraints += [volume_traded <= volume_permissible]
+        
 
     def add_criteria_limit_top_k_allocations(self, k: int, max_limit: float):
         """
@@ -122,33 +130,34 @@ class EquityOptimiser:
         self._constraints += [cp.sum_largest(cp.abs(self._w), k) <= max_limit]
 
     # objectives
-    def add_utility_baseline(self):
+    def add_objective_baseline(self):
         """
         Objective Function:
-            w^T * mu - lambda * w^T * sigma * w     ; where lambda is a +ve, risk parameter
+            w^T * mu - lambda * w^T * sigma * w   ; where lambda is a +ve, risk parameter
         """
         self._lambda = cp.Parameter(
             nonneg=True
-        )  # (to ensure concavity for maximisation problem, and calm down cvxpy)
+        )  # (to ensure concavity for maximisation problem)
         self._return = self._w.T @ self._mu
         self._risk = self._w.T @ self._sigma @ self._w
         self._utility = self._return - self._lambda * self._risk
 
-    def modify_utility_txn_costs():
+    def modify_objective_txn_costs(self, c: np.ndarray):
         """
-        accomodate transaction costs (slippage, bid-ask spread, etc.).
-        Fixed transaction costs per asset?
+        Accomodate transaction costs (slippage, bid-ask spread, etc.).
         """
-        pass
+        self._utility -= c.T @ cp.abs(self._w - self._w_prev)
 
-    def modify_utility_reduce_turnover(self):
+    def modify_objective_reduce_turnover(self, turnover_parameter: float):
         """
-        Reduction in turnover of the portfolio.
+        Penalise high portfolio turnover.
+        t * sum(|w_delta|)
         """
-        pass
+        self._turnover_param = cp.Parameter(nonneg=True, value=turnover_parameter)
+        self._utility -= turnover_parameter * cp.sum(cp.abs(self._w - self._w_prev))
 
     # solve
-    def optimise(self, lambda_: float = 1.0) -> Tuple[np.ndarray, float, float]:
+    def optimise(self, lambda_: float = 1.0, turnover_: float = 1.0) -> Tuple[np.ndarray, float, float]:
         """
         Run optimiser and return optimal weights.
         Optimization Approach:

@@ -1,9 +1,11 @@
+import functools
 import logging
 from typing import Optional, Tuple
 
 import numpy as np
-from scipy.optimize import minimize
+import scipy.optimize as sco
 
+import lin_alg
 import optimiser_validation_utils
 
 logger = logging.getLogger(__name__)
@@ -18,33 +20,33 @@ class EquityOptimiser:
             covariance_matrix:
                 An (n,n) np array of covariance between asset returns. Should be positive semi-definite.
         """
-        # Validate input
+        # validate input
         optimiser_validation_utils.validate_optimiser_inputs(expected_returns, covariance_matrix)
 
-        # Store data
+        # fill data
         self._n = expected_returns.shape[0]
         self._mu = expected_returns.reshape(self._n, 1)
         self._sigma = covariance_matrix.reshape(self._n, self._n)
         self._constraints = []
+        self._w = np.ones(self._n) / self._n # equal weights to start
         self._bounds = None
         self._lambda = 1.0  # risk parameter
-        self._txn_cost = np.full(self._n, 0)  # txn cost
+        self._txn_cost = np.full(self._n, 0).reshape(self._n, 1)  # txn cost
 
+        # setup base objective function and criteria
+        self.add_criteria_baseline()
 
-    def _objective(self, w):
+    # constraints
+    def add_criteria_baseline(self):
         """
-        Mean-Variance Objective with Transaction Costs:
-        Maximize: w^T * mu - lambda * w^T * sigma * w - sum(c1_i * |w_i|) - sum(c2_i * w_i^2)
-        scipy.optimize.minimize minimizes functions, so we return the negative of this.
+            Constraints:
+                1^T * _w = 1
         """
-        base_utility = w @ self._mu - self._lambda * w.T @ self._sigma @ w \
-            - np.sum(self._txn_cost * np.abs(w))
+        def _net_exposure_constraint(n, w: np.ndarray):
+            return np.ones(n).T @ w - 1
 
-        return -base_utility
-
-    def _net_exposure_constraint(self, w):
-        """ Constraint: Sum of weights should be 1 (fully invested portfolio) """
-        return np.sum(w) - 1
+        # net_exposure_func = functools.partial(_net_exposure_constraint, self._n)
+        self._constraints += [{'type': 'eq', 'fun': lambda w: _net_exposure_constraint(self._n, w)}]
 
     def _adv_constraint(self, w, max_adv):
         """ ADV Constraint: |w_i| ≤ max_adv * sum(|w|) for all i """
@@ -62,9 +64,10 @@ class EquityOptimiser:
 
     def add_criteria_weights(self, w_min: Optional[float] = None, w_max: Optional[float] = None):
         """
-        Set upper and lower bounds on asset weights.
+        Set weight limits on individual assets (e.g., no more than 10% in any single asset).
+        w_min <= w <= w_max
         """
-        self._bounds = [(w_min if w_min is not None else -1, w_max if w_max is not None else 1)] * self._n
+        self._bounds = [(w_min, w_max)] * self._n
 
     def add_criteria_return_target(self, mu_min: float, mu_max: Optional[float] = None):
         """
@@ -80,6 +83,20 @@ class EquityOptimiser:
 
     def add_criteria_max_adv_equity(self, max_adv: float):
         """ ADV Constraint Implementation """
+        """
+        For ex, no more than 5% of the ADV traded for a single stock. There could be multiple interpretations to this.
+        Interpretation 1:
+            If a stock i, has an adv-i in the market overall (for eg. GOOG ADV ~ 1.5B USD), then we cannot trade more than max_adv * adv-i of that stock.
+                -> need to know total volume of portfolio, previous day/current prices, etc to correctly accomodate ...
+        Interpration 2:
+            As the portfolio is long/short, total volume that we trade is [|w_+| + |w_-|] * V, where V is the initial amount we began with.
+            ADV for a stock is the amount of stock traded relative to the overall volume of the portfolio. Which means,
+            |w_i|*V / ([|w_+| + |w_-|] * V) <= max_adv
+            <=> |w_i| / ([|w_+| + |w_-|]) <= max_adv
+
+        As the interpretation 2 is simpler and more reasonable based on the input data, in the assignment, this is the one we go with.
+        Note, this will not be a convex constraint.
+        """
         self._constraints.append({'type': 'ineq', 'fun': lambda w: self._adv_constraint(w, max_adv)})
 
     def add_criteria_limit_top_k_allocations(self, k: int, max_limit: float):
@@ -95,50 +112,75 @@ class EquityOptimiser:
         """
         pass
 
-    def modify_utility_txn_costs(self, txn_cost: np.ndarray):
+    # objective function
+    def _objective(self, w):
+        """
+        Mean-Variance Objective with Transaction Costs:
+
+        Maximize: w^T * mu - lambda * (w^T * sigma * w) - sum(c1_i * |w_i|))
+            ; where lambda is a +ve, risk parameter 
+        
+        We return the negative of this as sco.minimize, needs a minimization problem.
+        """
+        expectation = lin_alg.expectation(self._w, self._mu)
+        variance = lin_alg.variance(self._w, self._sigma)
+        base_utility =  expectation - self._lambda * variance \
+            - np.sum(self._txn_cost * np.abs(w))
+
+        return -base_utility
+    
+    def modify_objective_txn_costs(self, txn_cost: np.ndarray):
         """
         Modify the objective function to include transaction costs.
         :params:
-            txn_cost: A (n,) vector where each element represents cost per asset.
+            txn_cost: An (n,) vector where each element represents some linear kind-of cost per asset.
         """
-        if len(txn_cost) != self._n:
-            raise ValueError("Transaction cost vector must match asset count")
-        self._txn_cost = txn_cost
+        optimiser_validation_utils.validate_txn_inputs(txn_cost, self._n)
+        self._txn_cost = txn_cost.reshape(self._n, 1)
 
-    def modify_utility_reduce_turnover():
+    def modify_objective_reduce_turnover():
         """
         Reduction in turnover of the portfolio.
         """
         pass
 
+    # solve
     def optimise(self, lambda_: float = 1.0) -> Tuple[np.ndarray, float, float]:
         """
         Run optimizer using scipy.optimize.minimize with SLSQP.
+        Optimization Approach:
+            Quadratic Programming for Mean-Variance Optimization
+            Interior Point Methods or Sequential Quadratic Programming (SQP)
+        :params:
+            expected_returns: an ndarray(n) of E(stock-i returns)
+            covariance: an (nxn) numpy matrix of Cov(stock-i,stock-j)
+        :returns:
+            optimal_weights: weights vector shape=(n,) for each stock
+            E(return): optimal portfolio expected return
+            E(risk/variance): optimal portfolio standard_deviation (sqrt(variance))
         """
         optimiser_validation_utils.validate_lambda(lambda_)
         self._lambda = lambda_
 
-        # Initial guess: Equal weights
-        w0 = np.ones(self._n) / self._n
-
         # Solve optimization
-        result = minimize(
+        result: sco.OptimizeResult = sco.minimize(
             self._objective, 
-            w0, 
-            method='SLSQP', 
+            self._w, 
+            method='SLSQP',
             bounds=self._bounds, 
-            constraints=[{'type': 'eq', 'fun': self._net_exposure_constraint}] + self._constraints
+            constraints=self._constraints
         )
 
         if not result.success:
-            raise ValueError("Optimization failed")
+            logger.error(f"optimisation failed message: {result.message}")
+            raise ValueError("Optimization failed!")
 
         # Extract results
-        optimal_w = result.x
-        optimal_return = np.dot(optimal_w, self._mu)
-        optimal_risk = np.sqrt(optimal_w.T @ self._sigma @ optimal_w)
+        self._w = result.x
+        optimal_return = lin_alg.expectation(self._w, self._mu)
+        optimal_risk = lin_alg.std_dev(self._w, self._sigma)
 
-        logger.info(f"Optimal Weights: {optimal_w}")
-        logger.info(f"Portfolio Expected Return: {optimal_return}, Risk: {optimal_risk}")
+        logger.info(f"optimal weights: {self._w}")
+        logger.info(f"mu: {optimal_return}, sigma: {optimal_risk}")
 
-        return optimal_w, optimal_return, optimal_risk
+        return self._w, optimal_return, optimal_risk
