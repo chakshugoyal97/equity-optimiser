@@ -92,14 +92,23 @@ class EquityOptimiser:
         """
         pass
 
-    def add_criteria_max_adv_equity(
-        self, w_prev: np.ndarray, ADV: np.ndarray, max_adv: float
-    ):
+    def add_criteria_max_adv_equity(self, max_adv: float):
         """
-        Eg - No more than 5% of the ADV traded for a single stock
+        For example, no more than 5% of the ADV traded for a single stock. There could be multiple interpretations to this.
+        As the interpretation 2 is simpler and more reasonable based on the input data that's mentioned, that's the one we implement.
+        Interpretation 1:
+            If a stock i, has an adv-i in the market overall (for eg. GOOG ADV is 2B USD), then we cannot trade more than max_adv * adv-i of that stock.
+                -> need to know total volume of portfolio, previous day/current prices, etc...
+        Interpration 2:
+            As the portfolio is long/short, total volume that we trade is [|w_+| + |w_-|] * V, where V is the initial amount we began with.
+            ADV for a stock is the amount of stock traded relative to the overall volume of the portfolio. Which means,
+            |w_i|*V / ([|w_+| + |w_-|] * V) <= max_adv
+            <=> |w_i| / ([|w_+| + |w_-|]) <= max_adv
+
+        Beware, this is not convex anymore. Don't use it.
         """
-        optimiser_validation_utils.validate_adv(w_prev, ADV, self._n)
-        pass
+        total_volume = cp.norm(self._w, 1)
+        self._constraints += [cp.max(cp.abs(self._w)) <= max_adv * total_volume]
 
     def add_criteria_limit_top_k_allocations(self, k: int, max_limit: float):
         """
@@ -108,7 +117,7 @@ class EquityOptimiser:
         Let t be the threshold cutoff for top-k allocations, then this can be represented by:
         SUM[ max(w_i - t, 0) ] + t*k <= max_limit, t >= 0
 
-        Or use cp.sum_largest.
+        Or use cp.sum_largest()
         """
         self._constraints += [cp.sum_largest(cp.abs(self._w), k) <= max_limit]
 

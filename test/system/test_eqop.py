@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from constants import TOL
-from optimiser import EquityOptimiser
+from optimiser_scipy import EquityOptimiser
 
 logger = logging.getLogger(__name__)
 
@@ -113,3 +113,46 @@ def test_optimiser_top_k(n: int, mu: float, sigma: float, k: int, max_limit: flo
     assert w.shape == (n,)
     w_top_k = np.sum(np.sort(np.abs(w))[-k:])
     assert w_top_k <= max_limit + TOL
+
+@pytest.mark.parametrize(
+    "n,mu,sigma,adv", [(3, 0.1, 0.2, 0.5), (15, 0.07, 0.05, 0.2), (20, 0.5, 0.8, 0.1)]
+)
+def test_optimiser_max_adv(n: int, mu: float, sigma: float, adv: float):
+    # GIVEN
+    expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
+    eo = EquityOptimiser(expected_returns, covariance_matrix)
+
+    # WHEN
+    eo.add_criteria_max_adv_equity(adv)
+    w, mu, sigma = eo.optimise()
+
+    # THEN
+    assert w.shape == (n,)
+    total_vol = np.sum(np.abs(w))
+    assert np.max(np.abs(w)) <= adv * total_vol + TOL
+
+
+@pytest.mark.parametrize(
+    "n,mu,sigma,txn_cost",
+    [
+        (10, 0.1, 0.2, np.full(10, 0.01)),  # Small costs
+        (15, 0.07, 0.05, np.linspace(0.005, 0.02, 15)),  # Varying costs
+    ],
+)
+def test_optimiser_txn_costs(
+    n: int, mu: float, sigma: float, txn_cost: np.ndarray
+):
+    # GIVEN
+    expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
+    eo = EquityOptimiser(expected_returns, covariance_matrix)
+
+    # WHEN
+    eo.modify_utility_txn_costs(txn_cost)
+    w, mu, sigma = eo.optimise()
+
+    # THEN
+    assert w.shape == (n,)
+    
+    # Ensure transaction costs impact the portfolio:
+    txn_cost_impact = np.sum(txn_cost * np.abs(w))
+    assert txn_cost_impact > 0
