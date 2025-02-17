@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from constants import TOL
-from optimiser_cvxpy import EquityOptimiser
+from optimiser import EquityOptimiser
 
 logger = logging.getLogger(__name__)
 
