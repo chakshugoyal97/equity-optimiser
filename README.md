@@ -32,13 +32,13 @@ eo = EquityOptimiser(expected_returns, covariance_matrix)
 ### Adding Constraints
 ```python
 # Add weight limits
-eo.add_criteria_weights(w_min=0.0, w_max=0.3)
+eo.set_weights_bound(w_min=0.0, w_max=0.3)
 
 # Add minimum return constraint
-eo.add_criteria_return_target(mu_min=0.12)
+eo.set_min_return(mu_min=0.12)
 
 # Add maximum risk constraint
-eo.add_criteria_risk_level(sigma_max=0.15)
+eo.set_max_risk(sigma_max=0.15)
 ```
 
 ### Optimising The Portfolio

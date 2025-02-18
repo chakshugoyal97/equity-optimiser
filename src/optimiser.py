@@ -140,6 +140,13 @@ class EquityOptimiser:
         """
         self._constraints += [cp.sum_largest(cp.abs(self._w), k) <= max_limit]
 
+    # composable constraints
+    def min_risk_given_return():
+        pass
+
+    def max_return_given_risk():
+        pass
+
     # objectives
     def add_base_objective(self):
         """
