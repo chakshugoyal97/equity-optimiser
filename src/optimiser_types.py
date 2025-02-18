@@ -1,5 +1,7 @@
-import numpy as np
 from dataclasses import dataclass
+
+import numpy as np
+
 
 @dataclass
 class OptimiserOutput:
@@ -9,4 +11,3 @@ class OptimiserOutput:
 
     def __iter__(self):
         return iter((self.weights, self.expected_return, self.risk))
-

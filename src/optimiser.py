@@ -5,8 +5,8 @@ from typing import Optional, Tuple
 import cvxpy as cp
 import numpy as np
 
-from optimiser_types import OptimiserOutput
 import optimiser_validation_utils
+from optimiser_types import OptimiserOutput
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +78,7 @@ class EquityOptimiser:
         if mu_max:
             self._constraints += [self._return <= mu_max]
 
-    def set_max_risk(
-        self, sigma_max: float, sigma_min: Optional[float] = None
-    ):
+    def set_max_risk(self, sigma_max: float, sigma_min: Optional[float] = None):
         """
         A maximum risk level (maximum portfolio variance).
         As the constraint is not linear, this will trigger a convex solver.
@@ -100,7 +98,7 @@ class EquityOptimiser:
     ):
         """
         Control for industry/factor exposure.
-        e_min <= F * w <= e_max  ; where F is the factor_matrix, and e_min, and e_max are exposure bound vectors 
+        e_min <= F * w <= e_max  ; where F is the factor_matrix, and e_min, and e_max are exposure bound vectors
         :params:
             factor_matrix: Factor exposures for each of the assets with shape = (f,n) where f is the # of factors
             min_exposure: minimum exposure vector to each factor, shape (f,)
@@ -111,7 +109,9 @@ class EquityOptimiser:
         if max_exposure is not None:
             self._constraints += [factor_matrix @ self._w <= max_exposure]
 
-    def set_volume_adv_threshold(self, max_ratio: float, volume: float, adv: np.ndarray):
+    def set_volume_adv_threshold(
+        self, max_ratio: float, volume: float, adv: np.ndarray
+    ):
         """
         If a stock i, has an adv-i in the market overall (for eg. TSLA ADTV is 30B USD),
         then we cannot trade more than max_adv * adv-i of that stock.
@@ -132,7 +132,7 @@ class EquityOptimiser:
         """
         Sum of the k largest long/short allocations should not exceed a given target number.
 
-        To make this a linear problem, let t be the threshold cutoff for top-k allocations, 
+        To make this a linear problem, let t be the threshold cutoff for top-k allocations,
         then this can be represented by:
             sum(max(w_i-t, 0)) + t*k <= max_limit   ;   t >= 0
 
@@ -166,9 +166,9 @@ class EquityOptimiser:
     def set_txn_costs(self, c: np.ndarray):
         """
         Accomodate transaction costs (slippage, bid-ask spread, etc.) in the objective funtion.
-        Adds the following term to the objective function: 
+        Adds the following term to the objective function:
             - c^T @ abs(w_delta)    ; where c is txn costs vector
-        
+
         params:
             c: c is an (n,) vector representing txn costs ex, np.array([0.01, 0.01, 0.01])
         """
@@ -196,7 +196,9 @@ class EquityOptimiser:
         u = problem.solve()
 
         if self._w.value is None:
-            raise ValueError("Optimization failed")
+            raise ValueError(
+                f"Optimization failed with problem status: {problem.status}"
+            )
 
         logger.debug(f"Solver used: {problem.solver_stats.solver_name}, utililty: {u}")
         logger.info(f"optimal weights: {self._w.value}")
@@ -204,4 +206,6 @@ class EquityOptimiser:
             f"mu: {self._return.value[0]}, sigma: {math.sqrt(self._risk.value)}"
         )
 
-        return OptimiserOutput(self._w.value, self._return.value[0], math.sqrt(self._risk.value))
+        return OptimiserOutput(
+            self._w.value, self._return.value[0], math.sqrt(self._risk.value)
+        )
