@@ -13,6 +13,10 @@ np.random.seed(73)  # for reproducibility
 
 
 def _get_return_and_covariance(n: int, mu: float, sigma: float):
+    """
+    generate dummy expected_returns and covariance of stocks
+        - assuming alltogether stocks follow some N(mu, sigma^2) distribution
+    """
     # normal sampling from N(mu, sigma^2)
     expected_returns = sigma * np.random.randn(n, 1) + mu
 
@@ -59,9 +63,9 @@ def test_optimiser_weight_limits(
     assert w_opt.shape == (n,)
     assert np.isclose(np.sum(w_opt), 1, TOL)
     if w_min:
-        assert np.all(w_min - TOL <= w_opt)
+        assert (w_min - TOL) <= np.min(w_opt)
     if w_max:
-        assert np.all(w_opt <= w_max + TOL)
+        assert np.max(w_opt) <= (w_max + TOL)
 
 
 @pytest.mark.parametrize(
@@ -143,7 +147,7 @@ def test_optimiser_max_adv(n: int, mu: float, sigma: float, adv_multiple: float)
     volume_traded = np.abs(w_opt - w_prev) * volume
     volume_allowed = adv_multiple * adv
     volume_buffer = volume_allowed - volume_traded
-    assert np.all(volume_buffer + 1e-3 * volume >= 0)
+    assert np.all(volume_buffer + TOL * volume >= 0)
 
 
 @pytest.mark.parametrize(
@@ -170,3 +174,37 @@ def test_optimiser_txn_costs(n: int, mu: float, sigma: float, txn_cost: np.ndarr
     # Ensure transaction costs impact the portfolio:
     txn_cost_impact = np.sum(txn_cost * np.abs(w_opt))
     assert txn_cost_impact > 0  # Transaction costs should penalize large weights
+
+
+@pytest.mark.parametrize("n,mu,sigma", [(5, 0.1, 0.2)])
+def test_turnover_penalty(n, mu, sigma):
+    expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
+    prev_weights = np.ones(n) / n
+
+    eo = EquityOptimiser(expected_returns, covariance_matrix, prev_weights)
+
+    # Optimize with different turnover penalties
+    w_opt_1, mu_opt_1, sigma_opt_1 = eo.optimise(t_=0.1)
+    w_opt_2, mu_opt_2, sigma_opt_2 = eo.optimise(t_=1.0)
+
+    # Check that higher turnover penalty leads to less change in weights
+    turnover_1 = np.sum(np.abs(w_opt_1 - prev_weights))
+    turnover_2 = np.sum(np.abs(w_opt_2 - prev_weights))
+
+    assert turnover_2 <= turnover_1 + TOL
+
+
+@pytest.mark.parametrize("n,mu,sigma", [(5, 0.1, 0.2)])
+def test_lambda_effect(n, mu, sigma):
+    expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
+
+    eo = EquityOptimiser(expected_returns, covariance_matrix)
+
+    # Optimize with different lambda values
+    w_opt_1, mu_opt_1, sigma_opt_1 = eo.optimise(lambda_=0.1)
+    w_opt_2, mu_opt_2, sigma_opt_2 = eo.optimise(lambda_=1.0)
+
+    # Check that higher lambda leads to lower risk
+    assert sigma_opt_2 <= sigma_opt_1 + TOL
+    # Check that higher lambda may result in lower return
+    assert mu_opt_2 <= mu_opt_1 + TOL

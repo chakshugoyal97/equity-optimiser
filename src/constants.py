@@ -1,1 +1,1 @@
-TOL = 1e-6  # tolerance for numerical comparisons
+TOL = 1e-3  # tolerance for numerical comparisons

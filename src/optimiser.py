@@ -132,9 +132,9 @@ class EquityOptimiser:
         Sum of the k largest long/short allocations should not exceed a given target number.
 
         Let t be the threshold cutoff for top-k allocations, then this can be represented by:
-        SUM[ max(w_i - t, 0) ] + t*k <= max_limit, t >= 0
+        sum(max(w_i-t, 0)) + t*k <= max_limit   ;   t >= 0
 
-        Or use cp.sum_largest()
+        Here, we just use builtin cp.sum_largest()
         """
         self._constraints += [cp.sum_largest(cp.abs(self._w), k) <= max_limit]
 
@@ -187,7 +187,6 @@ class EquityOptimiser:
         self._t.value = t_
 
         problem = cp.Problem(cp.Maximize(self._utility), self._constraints)
-        # let cvxpy choose automatically or force interior-points by solver=cp.CLARABEL etc
         u = problem.solve()
 
         if self._w.value is None:

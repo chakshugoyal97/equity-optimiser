@@ -23,7 +23,7 @@
         "request": "launch",
         "module": "pytest",
         "args": [
-          "test/system",
+          "tests",
           "-s"
         ],
         "console": "integratedTerminal",

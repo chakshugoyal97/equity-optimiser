@@ -1,7 +1,7 @@
 {
     "python.testing.pytestEnabled": true,
     "python.testing.pytestArgs": [
-      "test/system",
+      "tests",
       "--cov=equity-optimiser",
       "--cov-report=term-missing"
     ],
