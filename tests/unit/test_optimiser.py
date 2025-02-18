@@ -15,7 +15,8 @@ np.random.seed(73)  # for reproducibility
 def _get_return_and_covariance(n: int, mu: float, sigma: float):
     """
     generate dummy expected_returns and covariance of stocks
-        - assuming alltogether stocks follow some N(mu, sigma^2) distribution
+        - assuming exp(stock_return) itself follows some N(mu, sigma^2) distribution
+        - irl it might be some pareto/exponential distribution
     """
     # normal sampling from N(mu, sigma^2)
     expected_returns = sigma * np.random.randn(n, 1) + mu
@@ -56,7 +57,7 @@ def test_optimiser_weight_limits(
 
     # WHEN
     eo = EquityOptimiser(expected_returns, covariance_matrix)
-    eo.add_criteria_weights(w_min, w_max)
+    eo.set_weights_bound(w_min, w_max)
     w_opt, mu_opt, sigma_opt = eo.optimise()
 
     # THEN
@@ -77,7 +78,7 @@ def test_optimiser_min_return(n: int, mu: float, sigma: float, mu_min: float):
 
     # WHEN
     eo = EquityOptimiser(expected_returns, covariance_matrix)
-    eo.add_criteria_return_target(mu_min)
+    eo.set_min_return(mu_min)
     w_opt, mu_opt, sigma_opt = eo.optimise()
 
     # THEN
@@ -95,7 +96,7 @@ def test_optimiser_max_risk(n: int, mu: float, sigma: float, sigma_max: float):
 
     # WHEN
     eo = EquityOptimiser(expected_returns, covariance_matrix)
-    eo.add_criteria_risk_level(sigma_max)
+    eo.set_max_risk(sigma_max)
     w_opt, mu_opt, sigma_opt = eo.optimise()
 
     # THEN
@@ -111,10 +112,10 @@ def test_optimiser_top_k(n: int, mu: float, sigma: float, k: int, max_limit: flo
 
     # WHEN
     eo = EquityOptimiser(expected_returns, covariance_matrix)
-    eo.add_criteria_limit_top_k_allocations(k, max_limit)
-    eo.add_criteria_weights(0, 0.3)
-    eo.add_criteria_return_target(0.25, 0.26)
-    eo.add_criteria_risk_level(1.9)
+    eo.set_top_k_limit(k, max_limit)
+    eo.set_weights_bound(0, 0.3)
+    eo.set_min_return(0.25, 0.26)
+    eo.set_max_risk(1.9)
     w_opt, mu_opt, sigma_opt = eo.optimise(0.05)
 
     # THEN
@@ -137,7 +138,7 @@ def test_optimiser_max_adv(n: int, mu: float, sigma: float, adv_multiple: float)
 
     # WHEN
     eo = EquityOptimiser(expected_returns, covariance_matrix, w_prev)
-    eo.add_criteria_max_adv_equity(adv_multiple, volume, adv)
+    eo.set_volume_adv_threshold(adv_multiple, volume, adv)
     w_opt, mu_opt, sigma_opt = eo.optimise()
 
     # THEN

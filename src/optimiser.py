@@ -43,18 +43,18 @@ class EquityOptimiser:
         self._utility = cp.Objective
 
         # setup base objective function and criteria
-        self.add_criteria_baseline()
-        self.add_objective_baseline()
+        self._set_baseline_wt_constraint()
+        self.add_base_objective()
 
     # constraints
-    def add_criteria_baseline(self):
+    def _set_baseline_wt_constraint(self):
         """
         Constraints:
             1^T * _w = 1
         """
         self._constraints += [cp.sum(self._w) == 1]
 
-    def add_criteria_weights(
+    def set_weights_bound(
         self, w_min: Optional[float] = None, w_max: Optional[float] = None
     ):
         """
@@ -67,7 +67,7 @@ class EquityOptimiser:
         if w_max is not None:
             self._constraints += [cp.max(self._w) <= w_max]
 
-    def add_criteria_return_target(self, mu_min: float, mu_max: Optional[float] = None):
+    def set_min_return(self, mu_min: float, mu_max: Optional[float] = None):
         """
         A minimum return target for the portfolio.
         A target portfolio return.
@@ -77,7 +77,7 @@ class EquityOptimiser:
         if mu_max:
             self._constraints += [self._return <= mu_max]
 
-    def add_criteria_risk_level(
+    def set_max_risk(
         self, sigma_max: float, sigma_min: Optional[float] = None
     ):
         """
@@ -91,7 +91,7 @@ class EquityOptimiser:
         if sigma_min:
             self._constraints += [sigma_min * sigma_min <= self._risk]
 
-    def add_criteria_factor_exposure(
+    def set_factor_exposure_constraint(
         self,
         factor_matrix: np.ndarray,
         min_exposure: Optional[np.ndarray],
@@ -99,6 +99,7 @@ class EquityOptimiser:
     ):
         """
         Control for industry/factor exposure.
+        e_min <= F * w <= e_max  ; where F is the factor_matrix, and e_min, and e_max are exposure bound vectors 
         :params:
             factor_matrix: Factor exposures for each of the assets with shape = (f,n) where f is the # of factors
             min_exposure: minimum exposure vector to each factor, shape (f,)
@@ -109,37 +110,37 @@ class EquityOptimiser:
         if max_exposure is not None:
             self._constraints += [factor_matrix @ self._w <= max_exposure]
 
-    def add_criteria_max_adv_equity(self, limit: float, volume: float, adv: np.ndarray):
+    def set_volume_adv_threshold(self, max_ratio: float, volume: float, adv: np.ndarray):
         """
-        If a stock i, has an adv-i in the market overall (for eg. GOOG ADV is 2B USD),
+        If a stock i, has an adv-i in the market overall (for eg. TSLA ADTV is 30B USD),
         then we cannot trade more than max_adv * adv-i of that stock.
-        |w_delta| * volume <= limit * max_adv
+        |w_delta| * volume <= max_ratio * max_adv
         :params:
             limit: adv multiple limit that is allowed to be traded, for ex 0.05 if setting to 5% of ADV
             w_prev: previous stock weights, should sum to 1 with shape (n,)
-            volume: net asset value of the portfolio
+            volume: Net Asset Value of the portfolio
             max_adv: market data - vector of adv traded per stock, should have shape (n,)
         """
-        assert limit >= 0 and limit <= 1
-        assert adv.shape == (self._n,)
+        optimiser_validation_utils.validate_adv(self._w_prev, adv, self._n, max_ratio)
 
         volume_traded = cp.abs(self._w - self._w_prev) * volume
-        volume_permissible = limit * adv
+        volume_permissible = max_ratio * adv
         self._constraints += [volume_traded <= volume_permissible]
 
-    def add_criteria_limit_top_k_allocations(self, k: int, max_limit: float):
+    def set_top_k_limit(self, k: int, max_limit: float):
         """
         Sum of the k largest long/short allocations should not exceed a given target number.
 
-        Let t be the threshold cutoff for top-k allocations, then this can be represented by:
-        sum(max(w_i-t, 0)) + t*k <= max_limit   ;   t >= 0
+        To make this a linear problem, let t be the threshold cutoff for top-k allocations, 
+        then this can be represented by:
+            sum(max(w_i-t, 0)) + t*k <= max_limit   ;   t >= 0
 
-        Here, we just use builtin cp.sum_largest()
+        Here, we actually just use builtin cp.sum_largest()
         """
         self._constraints += [cp.sum_largest(cp.abs(self._w), k) <= max_limit]
 
     # objectives
-    def add_objective_baseline(self):
+    def add_base_objective(self):
         """
         Objective Function:
             + [w^T * mu]                    ; maximise return
@@ -163,8 +164,12 @@ class EquityOptimiser:
 
     def set_txn_costs(self, c: np.ndarray):
         """
-        Accomodate transaction costs (slippage, bid-ask spread, etc.).
-        - c^T @ abs(w_delta) where, c is an (n,) vector representing txn costs effect
+        Accomodate transaction costs (slippage, bid-ask spread, etc.) in the objective funtion.
+        Adds the following term to the objective function: 
+            - c^T @ abs(w_delta)    ; where c is txn costs vector
+        
+        params:
+            c: c is an (n,) vector representing txn costs ex, np.array([0.01, 0.01, 0.01])
         """
         self._utility -= c.T @ cp.abs(self._w - self._w_prev)
 

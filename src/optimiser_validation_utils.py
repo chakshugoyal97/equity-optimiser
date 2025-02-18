@@ -52,13 +52,15 @@ def validate_lambda(lambda_: float):
         raise InputError("lambda cannot be negative")
 
 
-def validate_adv(w_prev: np.ndarray, adv: np.ndarray, n: int):
+def validate_adv(w_prev: np.ndarray, adv: np.ndarray, n: int, limit):
     if not cmath.isclose(np.sum(w_prev), 1.0, TOL):
         raise InputError("prev weights do not sum to 1")
     if not w_prev.shape == (n,):
         raise InputError(f"Incorrect w_prev shape, expected {(n,)}, got {w_prev.shape}")
     if not adv.shape == (n,):
         raise InputError(f"Incorrect ADV shape, expected {(n,)}, got {adv.shape}")
+    if not limit >= 0 and limit <= 1:
+        raise InputError("limit not between 0 and 1")
 
 
 def validate_txn_inputs(txn_cost: np.ndarray, n: int):
