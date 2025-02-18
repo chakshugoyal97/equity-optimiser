@@ -45,7 +45,7 @@ class EquityOptimiser:
 
         # setup base objective function and criteria
         self._set_baseline_wt_constraint()
-        self.add_base_objective()
+        self._add_base_objective()
 
     # constraints
     def _set_baseline_wt_constraint(self):
@@ -140,15 +140,8 @@ class EquityOptimiser:
         """
         self._constraints += [cp.sum_largest(cp.abs(self._w), k) <= max_limit]
 
-    # composable constraints
-    def min_risk_given_return():
-        pass
-
-    def max_return_given_risk():
-        pass
-
     # objectives
-    def add_base_objective(self):
+    def _add_base_objective(self):
         """
         Objective Function:
             + [w^T * mu]                    ; maximise return
@@ -157,17 +150,22 @@ class EquityOptimiser:
         """
         # nonneg to ensure convexity
         self._lambda = cp.Parameter(nonneg=True)
+        self._return_f = cp.Parameter(nonneg=True, value=1)
 
         self._return = self._w.T @ self._mu
         self._risk = self._w.T @ self._sigma @ self._w
 
         # penalise high turnover: - t * sum(|w_delta|)
-        self._t = cp.Parameter(nonneg=True)
-        self.turnover_penalty = self._t * cp.sum(cp.abs(self._w - self._w_prev))
+        self._turnover_f = cp.Parameter(nonneg=True)
+        self.turnover_penalty = self._turnover_f * cp.sum(
+            cp.abs(self._w - self._w_prev)
+        )
 
         # put it together
         self._utility = (
-            self._return - self._lambda * self._risk - self._t * self.turnover_penalty
+            self._return_f * self._return
+            - self._lambda * self._risk
+            - self._turnover_f * self.turnover_penalty
         )
 
     def set_txn_costs(self, c: np.ndarray):
@@ -183,13 +181,14 @@ class EquityOptimiser:
 
     # solve
     def optimise(
-        self, lambda_: float = 1.0, t_: float = 0
+        self, lambda_: float = 1.0, turnover_f_: float = 0, return_f_: float = 1.0
     ) -> Tuple[np.ndarray, float, float]:
         """
         Run optimiser and return optimal weights.
         :params:
-            lambda_:   +ve parameter to adjust risk term
-            t_:        +ve parameter to adjust portfolio-turnover term
+            lambda_:        +ve parameter to adjust risk term
+            turnover_f_:    +ve parameter to adjust portfolio-turnover term
+            return_f_:      +ve parameter to adjust return term
         :returns:
             optimal_weights: weights vector shape=(n,) for each stock
             E(return): optimal portfolio expected return
@@ -197,7 +196,8 @@ class EquityOptimiser:
         """
         optimiser_validation_utils.validate_lambda(lambda_)
         self._lambda.value = lambda_
-        self._t.value = t_
+        self._turnover_f.value = turnover_f_
+        self._return_f.value = return_f_
 
         problem = cp.Problem(cp.Maximize(self._utility), self._constraints)
         u = problem.solve()
@@ -216,3 +216,24 @@ class EquityOptimiser:
         return OptimiserOutput(
             self._w.value, self._return.value[0], math.sqrt(self._risk.value)
         )
+
+    # composite constraints / solvers
+    def optimise_risk_given_return(self, min_ret: float):
+        """
+        As long as minimum return is achieved, find the lowest risk.
+        """
+        self.set_min_return(min_ret)
+        self._return_f.value = 0
+        return self.optimise()
+
+    def optimise_return_given_risk(self, max_risk: float):
+        """
+        As long as risk/std_dev is within max_risk, find highest return
+        """
+        self.set_max_risk(max_risk)
+        self._lambda.value = 0
+        return self.optimise()
+
+    # helper function
+    def clear_constraints(self):
+        self._constraints = []

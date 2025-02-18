@@ -236,8 +236,8 @@ def test_turnover_penalty(n, mu, sigma):
     eo = EquityOptimiser(expected_returns, covariance_matrix, prev_weights)
 
     # Optimize with different turnover penalties
-    w_opt_1, mu_opt_1, sigma_opt_1 = eo.optimise(t_=0.1)
-    w_opt_2, mu_opt_2, sigma_opt_2 = eo.optimise(t_=1.0)
+    w_opt_1, mu_opt_1, sigma_opt_1 = eo.optimise(turnover_f_=0.1)
+    w_opt_2, mu_opt_2, sigma_opt_2 = eo.optimise(turnover_f_=1.0)
 
     # Check that higher turnover penalty leads to less change in weights
     turnover_1 = np.sum(np.abs(w_opt_1 - prev_weights))
@@ -261,3 +261,18 @@ def test_lambda_effect(n, mu, sigma):
     assert sigma_opt_2 <= sigma_opt_1 + TOL
     # Check that higher lambda may result in lower return
     assert mu_opt_2 <= mu_opt_1 + TOL
+
+
+def test_risk_given_return():
+    # GIVEN: Assets with risk-return tradeoff
+    mu = np.array([0.05, 0.15])
+    cov = np.array([[0.1, 0.2], [0.2, 0.9]])
+    eo = EquityOptimiser(mu, cov)
+
+    # WHEN: Run both optimizers
+    _, mu_low_risk, sigma_low_risk = eo.optimise_risk_given_return(min_ret=0.07)
+    _, mu_high_risk, sigma_high_risk = eo.optimise_risk_given_return(min_ret=0.1)
+
+    # THEN: Verify tradeoff
+    assert mu_high_risk > mu_low_risk
+    assert sigma_high_risk > sigma_low_risk
