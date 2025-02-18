@@ -40,7 +40,6 @@ def test_optimiser_basic(n: int, mu: float, sigma: float):
     assert np.isclose(np.sum(w_opt), 1, TOL)
 
 
-
 @pytest.mark.parametrize(
     "n,mu,sigma,w_min,w_max",
     [(10, 0.1, 0.2, -1, 1), (10, 0.1, 0.2, -5, None), (10, 0.1, 0.2, None, 3)],
@@ -71,7 +70,7 @@ def test_optimiser_weight_limits(
 def test_optimiser_min_return(n: int, mu: float, sigma: float, mu_min: float):
     # GIVEN
     expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
-    
+
     # WHEN
     eo = EquityOptimiser(expected_returns, covariance_matrix)
     eo.add_criteria_return_target(mu_min)
@@ -120,13 +119,15 @@ def test_optimiser_top_k(n: int, mu: float, sigma: float, k: int, max_limit: flo
     w_top_k = np.sum(np.sort(np.abs(w_opt))[-k:])
     assert w_top_k <= max_limit + TOL
 
+
 @pytest.mark.parametrize(
-    "n,mu,sigma,adv_multiple", [(3, 0.1, 0.2, 0.01), (15, 0.07, 0.05, 0.002), (20, 0.5, 0.8, 0.005)]
+    "n,mu,sigma,adv_multiple",
+    [(3, 0.1, 0.2, 0.01), (15, 0.07, 0.05, 0.002), (20, 0.5, 0.8, 0.005)],
 )
 def test_optimiser_max_adv(n: int, mu: float, sigma: float, adv_multiple: float):
     # GIVEN
     expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
-    w_prev = np.full(n, 1.0)/n
+    w_prev = np.full(n, 1.0) / n
     volume = 1e6
     adv = np.random.uniform(1e6, 1e7, n)
 
@@ -138,7 +139,7 @@ def test_optimiser_max_adv(n: int, mu: float, sigma: float, adv_multiple: float)
     # THEN
     assert w_opt.shape == (n,)
     assert np.isclose(np.sum(w_opt), 1, TOL)
-    
+
     volume_traded = np.abs(w_opt - w_prev) * volume
     volume_allowed = adv_multiple * adv
     volume_buffer = volume_allowed - volume_traded
@@ -152,23 +153,20 @@ def test_optimiser_max_adv(n: int, mu: float, sigma: float, adv_multiple: float)
         (15, 0.07, 0.05, np.linspace(0.005, 0.02, 15)),  # Varying costs
     ],
 )
-def test_optimiser_txn_costs(
-    n: int, mu: float, sigma: float, txn_cost: np.ndarray
-):
+def test_optimiser_txn_costs(n: int, mu: float, sigma: float, txn_cost: np.ndarray):
     # GIVEN
     expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
-    w_prev = np.full(n, 1.0)/n
-    
+    w_prev = np.full(n, 1.0) / n
+
     # WHEN
     eo = EquityOptimiser(expected_returns, covariance_matrix, w_prev)
-    eo.modify_objective_txn_costs(txn_cost)
+    eo.set_txn_costs(txn_cost)
     w_opt, mu, sigma = eo.optimise()
 
     # THEN
     assert w_opt.shape == (n,)
     assert np.isclose(np.sum(w_opt), 1, TOL)
-    
+
     # Ensure transaction costs impact the portfolio:
     txn_cost_impact = np.sum(txn_cost * np.abs(w_opt))
     assert txn_cost_impact > 0  # Transaction costs should penalize large weights
-

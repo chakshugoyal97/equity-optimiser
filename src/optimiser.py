@@ -11,7 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 class EquityOptimiser:
-    def __init__(self, expected_returns: np.ndarray, covariance_matrix: np.ndarray, prev_weights: Optional[np.ndarray] = None):
+    def __init__(
+        self,
+        expected_returns: np.ndarray,
+        covariance_matrix: np.ndarray,
+        prev_weights: Optional[np.ndarray] = None,
+    ):
         """
         :params:
             expected_returns:
@@ -86,7 +91,12 @@ class EquityOptimiser:
         if sigma_min:
             self._constraints += [sigma_min * sigma_min <= self._risk]
 
-    def add_criteria_factor_exposure(self, factor_matrix: np.ndarray, min_exposure: Optional[np.ndarray], max_exposure: Optional[np.ndarray]):
+    def add_criteria_factor_exposure(
+        self,
+        factor_matrix: np.ndarray,
+        min_exposure: Optional[np.ndarray],
+        max_exposure: Optional[np.ndarray],
+    ):
         """
         Control for industry/factor exposure.
         :params:
@@ -101,14 +111,14 @@ class EquityOptimiser:
 
     def add_criteria_max_adv_equity(self, limit: float, volume: float, adv: np.ndarray):
         """
-            If a stock i, has an adv-i in the market overall (for eg. GOOG ADV is 2B USD), 
-            then we cannot trade more than max_adv * adv-i of that stock.
-            |w_delta| * volume <= limit * max_adv
-            :params:
-                limit: adv multiple limit that is allowed to be traded, for ex 0.05 if setting to 5% of ADV
-                w_prev: previous stock weights, should sum to 1 with shape (n,) 
-                volume: net asset value of the portfolio
-                max_adv: market data - vector of adv traded per stock, should have shape (n,)
+        If a stock i, has an adv-i in the market overall (for eg. GOOG ADV is 2B USD),
+        then we cannot trade more than max_adv * adv-i of that stock.
+        |w_delta| * volume <= limit * max_adv
+        :params:
+            limit: adv multiple limit that is allowed to be traded, for ex 0.05 if setting to 5% of ADV
+            w_prev: previous stock weights, should sum to 1 with shape (n,)
+            volume: net asset value of the portfolio
+            max_adv: market data - vector of adv traded per stock, should have shape (n,)
         """
         assert limit >= 0 and limit <= 1
         assert adv.shape == (self._n,)
@@ -116,7 +126,6 @@ class EquityOptimiser:
         volume_traded = cp.abs(self._w - self._w_prev) * volume
         volume_permissible = limit * adv
         self._constraints += [volume_traded <= volume_permissible]
-        
 
     def add_criteria_limit_top_k_allocations(self, k: int, max_limit: float):
         """
@@ -133,39 +142,41 @@ class EquityOptimiser:
     def add_objective_baseline(self):
         """
         Objective Function:
-            w^T * mu - lambda * w^T * sigma * w   ; where lambda is a +ve, risk parameter
+            + [w^T * mu]                    ; maximise return
+            - [lambda * w^T * sigma * w]    ; minimise risk, here, lambda is a +ve, risk parameter
+            - [t * sum(|w_delta|)]          ; penalise turnover, here, t is a +ve turnover penalty parameter
         """
-        self._lambda = cp.Parameter(
-            nonneg=True
-        )  # (to ensure concavity for maximisation problem)
+        # nonneg to ensure convexity
+        self._lambda = cp.Parameter(nonneg=True)
+
         self._return = self._w.T @ self._mu
         self._risk = self._w.T @ self._sigma @ self._w
-        self._utility = self._return - self._lambda * self._risk
 
-    def modify_objective_txn_costs(self, c: np.ndarray):
+        # penalise high turnover: - t * sum(|w_delta|)
+        self._t = cp.Parameter(nonneg=True)
+        self.turnover_penalty = self._t * cp.sum(cp.abs(self._w - self._w_prev))
+
+        # put it together
+        self._utility = (
+            self._return - self._lambda * self._risk - self._t * self.turnover_penalty
+        )
+
+    def set_txn_costs(self, c: np.ndarray):
         """
         Accomodate transaction costs (slippage, bid-ask spread, etc.).
+        - c^T @ abs(w_delta) where, c is an (n,) vector representing txn costs effect
         """
         self._utility -= c.T @ cp.abs(self._w - self._w_prev)
 
-    def modify_objective_reduce_turnover(self, turnover_parameter: float):
-        """
-        Penalise high portfolio turnover.
-        t * sum(|w_delta|)
-        """
-        self._turnover_param = cp.Parameter(nonneg=True, value=turnover_parameter)
-        self._utility -= turnover_parameter * cp.sum(cp.abs(self._w - self._w_prev))
-
     # solve
-    def optimise(self, lambda_: float = 1.0, turnover_: float = 1.0) -> Tuple[np.ndarray, float, float]:
+    def optimise(
+        self, lambda_: float = 1.0, t_: float = 0
+    ) -> Tuple[np.ndarray, float, float]:
         """
         Run optimiser and return optimal weights.
-        Optimization Approach:
-            Quadratic Programming for Mean-Variance Optimization
-            Interior Point Methods or Sequential Quadratic Programming (SQP)
         :params:
-            expected_returns: an ndarray(n) of E(stock-i returns)
-            covariance: an (nxn) numpy matrix of Cov(stock-i,stock-j)
+            lambda_:   +ve parameter to adjust risk term
+            t_:        +ve parameter to adjust portfolio-turnover term
         :returns:
             optimal_weights: weights vector shape=(n,) for each stock
             E(return): optimal portfolio expected return
@@ -173,6 +184,7 @@ class EquityOptimiser:
         """
         optimiser_validation_utils.validate_lambda(lambda_)
         self._lambda.value = lambda_
+        self._t.value = t_
 
         problem = cp.Problem(cp.Maximize(self._utility), self._constraints)
         # let cvxpy choose automatically or force interior-points by solver=cp.CLARABEL etc

@@ -37,12 +37,14 @@ def validate_optimiser_inputs(var: np.ndarray, covar: np.ndarray, w_prev: np.nda
     # This is a criteria for convex optimisation
     if not _is_PSD(covar):
         raise InputError("Covariance matrix must be PSD.")
-    
+
     if w_prev is not None:
         if not np.isclose(np.sum(w_prev), 1.0):
             raise InputError("previous weights do not sum to 1")
         if w_prev.shape != (N,):
-            raise InputError(f"incorrect previous weights shape, expected, {(N,1)}, got {w_prev.shape}")
+            raise InputError(
+                f"incorrect previous weights shape, expected, {(N, 1)}, got {w_prev.shape}"
+            )
 
 
 def validate_lambda(lambda_: float):
@@ -57,6 +59,7 @@ def validate_adv(w_prev: np.ndarray, adv: np.ndarray, n: int):
         raise InputError(f"Incorrect w_prev shape, expected {(n,)}, got {w_prev.shape}")
     if not adv.shape == (n,):
         raise InputError(f"Incorrect ADV shape, expected {(n,)}, got {adv.shape}")
+
 
 def validate_txn_inputs(txn_cost: np.ndarray, n: int):
     if len(txn_cost) != n:
