@@ -4,7 +4,7 @@ Equity optimiser based upon Markowitz Modern Portfolio Theory (MPT) for long/sho
 ## Features
 - Classic Mean-Variance Optimsiation
 - Supports weight limits (min, max)
-- set maximum risk level, and/or minimum return expectation 
+- Set maximum risk level, and/or minimum return expectation
 - Dynamically add more complex constraints like limit volume/ADV ratio, top-k concentration, factor-exposure constraints, etc ...
 - Adjust risk parameter, reduce turnover, txn costs etc
 
@@ -52,7 +52,7 @@ print("Expected Risk:", expected_risk)
 ```
 
 # Contribution
-You can use [uv](https://docs.astral.sh/uv/), installable via `brew install uv` on MacOS to run tests, but pip should work just fine too.
+Here, we use [uv](https://docs.astral.sh/uv/), installable via `brew install uv` on MacOS to setup environment, and run tests.
 
 ```bash
 git clone https://github.com/chakshugoyal97/equity-optimiser.git
@@ -62,6 +62,11 @@ uv sync
 uv run pytest tests
 ```
 
+```bash
+uv run ruff format
+uv run ruff check --select I --fix .
+uv run ruff check --select PL --fix .
+```
 
 ## Pre-Requisites:
 - cvxpy
