@@ -176,6 +176,7 @@ def test_optimiser_txn_costs(n: int, mu: float, sigma: float, txn_cost: np.ndarr
     assert txn_cost_impact > 0  # Transaction costs should penalize large weights
 
 
+# verify that higher turnover penalty leads to less change in portfolio weights
 @pytest.mark.parametrize("n,mu,sigma", [(5, 0.1, 0.2)])
 def test_turnover_penalty(n, mu, sigma):
     expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
@@ -193,7 +194,7 @@ def test_turnover_penalty(n, mu, sigma):
 
     assert turnover_2 <= turnover_1 + TOL
 
-
+# verify that higher lambda results in lower risk and lower returns
 @pytest.mark.parametrize("n,mu,sigma", [(5, 0.1, 0.2)])
 def test_lambda_effect(n, mu, sigma):
     expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
