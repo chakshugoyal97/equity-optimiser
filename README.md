@@ -1,12 +1,14 @@
 # Equity Optimiser Library
-Equity Optimiser based upon Markowitz Modern Portfolio Theory (MPT). 
+Equity optimiser based upon Markowitz Modern Portfolio Theory (MPT) for long/short portfolios.
 
 ## Features
 - Classic Mean-Variance Optimsiation
 - Supports weight limits (min, max)
-- Dynamically adjust risk parameter and add criterias
+- set maximum risk level, and/or minimum return expectation 
+- Dynamically add more complex constraints like limit volume/ADV ratio, top-k concentration, factor-exposure constraints, etc ...
+- Adjust risk parameter, reduce turnover, txn costs etc
 
-## Examples
+## Usage
 
 ### Initialising the Optimiser
 ```python
