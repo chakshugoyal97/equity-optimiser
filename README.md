@@ -8,6 +8,12 @@ Equity optimiser based upon Markowitz Modern Portfolio Theory (MPT) for long/sho
 - Dynamically add more complex constraints like limit volume/ADV ratio, top-k concentration, factor-exposure constraints, etc ...
 - Adjust risk parameter, reduce turnover, txn costs etc
 
+## Assumptions
+- asset returns are normally distributed
+- long/short weights
+- sum of weights = 1
+- portfolio risk is represented by covariance
+
 ## Usage
 
 ### Initialising the Optimiser
@@ -56,7 +62,7 @@ optimal_weights, expected_return, expected_risk = eo.optimise_return_given_risk(
 ```
 
 # Contribution
-Here, we use [uv](https://docs.astral.sh/uv/), installable via `brew install uv` on MacOS to setup environment, and run tests.
+To use [uv](https://docs.astral.sh/uv/), installable via `brew install uv` on MacOS to setup environment, and run tests:
 
 ```bash
 git clone https://github.com/chakshugoyal97/equity-optimiser.git
