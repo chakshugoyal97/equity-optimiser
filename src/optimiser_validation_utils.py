@@ -39,7 +39,7 @@ def validate_optimiser_inputs(var: np.ndarray, covar: np.ndarray, w_prev: np.nda
         raise InputError("Covariance matrix must be PSD.")
     
     if w_prev is not None:
-        if np.sum(w_prev) != 1:
+        if not np.isclose(np.sum(w_prev), 1.0):
             raise InputError("previous weights do not sum to 1")
         if w_prev.shape != (N,):
             raise InputError(f"incorrect previous weights shape, expected, {(N,1)}, got {w_prev.shape}")

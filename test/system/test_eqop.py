@@ -157,9 +157,10 @@ def test_optimiser_txn_costs(
 ):
     # GIVEN
     expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
+    w_prev = np.full(n, 1.0)/n
     
     # WHEN
-    eo = EquityOptimiser(expected_returns, covariance_matrix)
+    eo = EquityOptimiser(expected_returns, covariance_matrix, w_prev)
     eo.modify_objective_txn_costs(txn_cost)
     w_opt, mu, sigma = eo.optimise()
 
