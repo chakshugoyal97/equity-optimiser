@@ -1,10 +1,12 @@
 import logging
 import math
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import cvxpy as cp
 import numpy as np
 
+from constants import TOL
+from optimiser_types import Constraint, OptimiserOutput
 import optimiser_validation_utils
 
 logger = logging.getLogger(__name__)
@@ -20,7 +22,7 @@ class EquityOptimiser:
         """
         :params:
             expected_returns:
-                A vector (shape = (n,1)) of expected asset returns (mean vector).
+                A vector (shape = (n,)) of expected asset returns (mean vector).
                 Assume the returns are sampled from a normal distribution with typical stock mean and volatilities.
             covariance_matrix:
                 An (n,n) np array of covariance between asset returns. Should be positive semi-definite.
@@ -36,7 +38,7 @@ class EquityOptimiser:
         self._n = expected_returns.shape[0]
         self._mu = expected_returns.reshape(self._n, 1)
         self._sigma = covariance_matrix.reshape(self._n, self._n)
-        self._constraints: cp.Constraint = []
+        self._constraints: List[Constraint] = []
 
         self._w_prev = prev_weights if prev_weights is not None else np.zeros(self._n)
         self._w = cp.Variable(self._n)
@@ -52,7 +54,7 @@ class EquityOptimiser:
         Constraints:
             1^T * _w = 1
         """
-        self._constraints += [cp.sum(self._w) == 1]
+        self._constraints += [Constraint("sum of weights = 1", cp.sum(self._w) == 1)]
 
     def set_weights_bound(
         self, w_min: Optional[float] = None, w_max: Optional[float] = None
@@ -63,9 +65,9 @@ class EquityOptimiser:
         w_min <= w <= w_max
         """
         if w_min is not None:
-            self._constraints += [w_min <= cp.min(self._w)]
+            self._constraints += [Constraint(f"weights >= {w_min}", w_min <= cp.min(self._w))]
         if w_max is not None:
-            self._constraints += [cp.max(self._w) <= w_max]
+            self._constraints += [Constraint(f"weights <= {w_max}", cp.max(self._w) <= w_max)]
 
     def set_min_return(self, mu_min: float, mu_max: Optional[float] = None):
         """
@@ -73,9 +75,9 @@ class EquityOptimiser:
         A target portfolio return.
         w^T * mu >= mu_min              (min asset return -> mu_max)
         """
-        self._constraints += [mu_min <= self._return]
+        self._constraints += [Constraint(f"return >= {mu_min}", mu_min <= self._return)]
         if mu_max:
-            self._constraints += [self._return <= mu_max]
+            self._constraints += [Constraint(f"return <= {mu_max}", self._return <= mu_max)]
 
     def set_max_risk(
         self, sigma_max: float, sigma_min: Optional[float] = None
@@ -87,9 +89,9 @@ class EquityOptimiser:
         :sigma_max:
             maximum standard deviation or sqrt(variance)
         """
-        self._constraints += [self._risk <= sigma_max * sigma_max]
+        self._constraints += [Constraint(f"std_dev (sqrt(risk)) <= {sigma_max}", self._risk <= sigma_max * sigma_max)]
         if sigma_min:
-            self._constraints += [sigma_min * sigma_min <= self._risk]
+            self._constraints += [Constraint(f"std_dev (sqrt(risk)) >= {sigma_max}", sigma_min * sigma_min <= self._risk)]
 
     def set_factor_exposure_constraint(
         self,
@@ -106,9 +108,9 @@ class EquityOptimiser:
             max_exposure: maximum exposure vector to each factor, shape (f,)
         """
         if min_exposure is not None:
-            self._constraints += [min_exposure <= factor_matrix @ self._w]
+            self._constraints += [Constraint(f"min factor exposure constraint", min_exposure <= factor_matrix @ self._w)]
         if max_exposure is not None:
-            self._constraints += [factor_matrix @ self._w <= max_exposure]
+            self._constraints += [Constraint(f"max factor exposure constraint", factor_matrix @ self._w <= max_exposure)]
 
     def set_volume_adv_threshold(self, max_ratio: float, volume: float, adv: np.ndarray):
         """
@@ -125,7 +127,7 @@ class EquityOptimiser:
 
         volume_traded = cp.abs(self._w - self._w_prev) * volume
         volume_permissible = max_ratio * adv
-        self._constraints += [volume_traded <= volume_permissible]
+        self._constraints += [Constraint(f"max volume/adv: {max_ratio}", volume_traded <= volume_permissible)]
 
     def set_top_k_limit(self, k: int, max_limit: float):
         """
@@ -137,7 +139,7 @@ class EquityOptimiser:
 
         Here, we actually just use builtin cp.sum_largest()
         """
-        self._constraints += [cp.sum_largest(cp.abs(self._w), k) <= max_limit]
+        self._constraints += [Constraint(f"top {k} concentration {max_limit}", cp.sum_largest(cp.abs(self._w), k) <= max_limit)]
 
     # objectives
     def add_base_objective(self):
@@ -183,24 +185,43 @@ class EquityOptimiser:
             lambda_:   +ve parameter to adjust risk term
             t_:        +ve parameter to adjust portfolio-turnover term
         :returns:
-            optimal_weights: weights vector shape=(n,) for each stock
-            E(return): optimal portfolio expected return
-            E(risk/variance): optimal portfolio standard_deviation (sqrt(variance))
+            OptimiserOutput object containing
+                weights: weights vector shape=(n,) for each stock
+                expected_return: optimal portfolio expected return
+                risk: optimal portfolio standard_deviation (sqrt(variance))
         """
         optimiser_validation_utils.validate_lambda(lambda_)
         self._lambda.value = lambda_
         self._t.value = t_
 
-        problem = cp.Problem(cp.Maximize(self._utility), self._constraints)
-        u = problem.solve()
+        cvxpy_constraints = [c.constraint for c in self._constraints]
+        problem = cp.Problem(cp.Maximize(self._utility), cvxpy_constraints)
+
+        try:
+            u = problem.solve()
+        except Exception as e:
+            raise RuntimeError(f"exception running solver: {e}")
+
 
         if self._w.value is None:
-            raise ValueError("Optimization failed")
+            # Check which constraints caused infeasibility
+            violated = []
+            for c in self._constraints:
+                violation = c.constraint.violation()
+                if violation > TOL:
+                    violated.append(f"Failed constraint: {c.description} (violation: {violation:.2e})")
+            if len(violated) > 0:
+                raise ValueError(
+                    "Infeasible problem. Violated constraints:\n  - " + "\n  - ".join(violated)
+                )
+            else:
+                raise ValueError("Optimization failed (no solution found): {problem.status}")
 
         logger.debug(f"Solver used: {problem.solver_stats.solver_name}, utililty: {u}")
+        logger.debug(f"problem value: {problem.value}")
         logger.info(f"optimal weights: {self._w.value}")
         logger.info(
             f"mu: {self._return.value[0]}, sigma: {math.sqrt(self._risk.value)}"
         )
 
-        return self._w.value, self._return.value[0], math.sqrt(self._risk.value)
+        return OptimiserOutput(self._w.value, self._return.value[0], math.sqrt(self._risk.value))

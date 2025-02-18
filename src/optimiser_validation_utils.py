@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 class InputError(Exception):
     pass
 
+class UnboundedError(Exception):
+    pass
 
 def _is_PSD(A: np.ndarray, tol: float = TOL):
     """
@@ -24,8 +26,8 @@ def _is_PSD(A: np.ndarray, tol: float = TOL):
 
 
 def validate_optimiser_inputs(var: np.ndarray, covar: np.ndarray, w_prev: np.ndarray):
-    N, a = var.shape
-    if N < 1 or a != 1:
+    N = var.shape[0]
+    if N < 1 or var.shape != (N,):
         raise InputError(f"Incorrect shape of var, got {var.shape}")
 
     if covar.shape != (N, N):
@@ -53,7 +55,7 @@ def validate_lambda(lambda_: float):
 
 
 def validate_adv(w_prev: np.ndarray, adv: np.ndarray, n: int, limit):
-    if not cmath.isclose(np.sum(w_prev), 1.0, TOL):
+    if not np.isclose(np.sum(w_prev), 1.0, TOL):
         raise InputError("prev weights do not sum to 1")
     if not w_prev.shape == (n,):
         raise InputError(f"Incorrect w_prev shape, expected {(n,)}, got {w_prev.shape}")
