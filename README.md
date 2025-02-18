@@ -62,6 +62,7 @@ uv sync
 uv run pytest tests
 ```
 
+Linting stuff
 ```bash
 uv run ruff format
 uv run ruff check --select I --fix .
