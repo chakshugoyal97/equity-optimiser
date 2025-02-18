@@ -49,6 +49,10 @@ optimal_weights, expected_return, expected_risk = eo.optimise(lambda_=0.5, t_=0.
 print("Optimal Weights:", optimal_weights)
 print("Expected Return:", expected_return)
 print("Expected Risk:", expected_risk)
+
+# Or using composite constraints such as following
+optimal_weights, expected_return, expected_risk = eo.optimise_risk_given_return(min_ret=0.16)
+optimal_weights, expected_return, expected_risk = eo.optimise_return_given_risk(max_risk=0.03)
 ```
 
 # Contribution
