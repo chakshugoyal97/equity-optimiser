@@ -5,6 +5,7 @@ from typing import Optional, Tuple
 import cvxpy as cp
 import numpy as np
 
+from optimiser_types import OptimiserOutput
 import optimiser_validation_utils
 
 logger = logging.getLogger(__name__)
@@ -203,4 +204,4 @@ class EquityOptimiser:
             f"mu: {self._return.value[0]}, sigma: {math.sqrt(self._risk.value)}"
         )
 
-        return self._w.value, self._return.value[0], math.sqrt(self._risk.value)
+        return OptimiserOutput(self._w.value, self._return.value[0], math.sqrt(self._risk.value))

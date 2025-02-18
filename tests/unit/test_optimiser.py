@@ -19,7 +19,7 @@ def _get_return_and_covariance(n: int, mu: float, sigma: float):
         - irl it might be some pareto/exponential distribution
     """
     # normal sampling from N(mu, sigma^2)
-    expected_returns = sigma * np.random.randn(n, 1) + mu
+    expected_returns = sigma * np.random.randn(n) + mu
 
     # for symmetrix, PSD arrays
     # needed because the risk term, (w^T @ Cov @ w^T) needs to be >= 0 always for convex optimsation
@@ -43,6 +43,56 @@ def test_optimiser_basic(n: int, mu: float, sigma: float):
     # THEN
     assert w_opt.shape == (n,)
     assert np.isclose(np.sum(w_opt), 1, TOL)
+
+
+
+# verify with an obvious case that we are long bull stock, and short bear stock
+def test_simple_case_two_assets():
+    # GIVEN
+    expected_returns = np.array([0.1, -0.1])
+    covariance_matrix = np.array([ [2.0, -2.0],[-2.0, 2.0]] )
+
+    # WHEN
+    eo = EquityOptimiser(expected_returns, covariance_matrix)
+    eo.set_weights_bound(-1, 2)
+    w_opt, mu_opt, sigma_opt = eo.optimise(lambda_=0.0)
+
+    # THEN
+    # Check that better performing mu had better weight
+    assert np.isclose(w_opt[0], 2, 1e-3)
+    assert np.isclose(w_opt[1], -1, 1e-3)
+
+# verify how we handle infinite case
+def test_failure_infinite_case():
+    # GIVEN
+    expected_returns = np.array([0.1, -0.1])
+    covariance_matrix = np.array([ [2.0, -2.0],[-2.0, 2.0]] )
+
+    # WHEN
+    eo = EquityOptimiser(expected_returns, covariance_matrix)
+    # AND THEN
+    with pytest.raises(ValueError) as e:
+        w_opt, mu_opt, sigma_opt = eo.optimise(lambda_=0)
+    
+    assert "unbounded" in str(e)
+
+
+# verify how we handle infeasible case
+def test_failure_infeasible_case():
+    # GIVEN
+    expected_returns = np.array([0.05, 0.04])
+    covariance_matrix = np.array([[1.0, 1.0],[1.0, 1.0]])
+
+    # WHEN
+    eo = EquityOptimiser(expected_returns, covariance_matrix)
+    eo.set_weights_bound(0, 1)
+    eo.set_min_return(0.5)
+
+    # AND THEN
+    with pytest.raises(ValueError) as e:
+        w_opt, mu_opt, sigma_opt = eo.optimise()
+    
+    assert "infeasible" in str(e)
 
 
 @pytest.mark.parametrize(
