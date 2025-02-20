@@ -26,7 +26,7 @@ class EquityOptimiser:
             covariance_matrix:
                 An (n,n) np array of covariance between asset returns. Should be positive semi-definite.
             prev_weights:
-                Previous or existing weights. Required for certain constraints.
+                Previous or existing weights. Required for certain constraints. Must sum to 1.
         """
         # validate input
         optimiser_validation_utils.validate_optimiser_inputs(
