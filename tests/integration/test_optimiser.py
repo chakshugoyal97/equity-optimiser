@@ -6,6 +6,7 @@ import pytest
 
 from constants import TOL
 from optimiser import EquityOptimiser
+from workbooks.download_data import load_optimization_data
 
 logger = logging.getLogger(__name__)
 
@@ -177,28 +178,30 @@ def test_optimiser_top_k(n: int, mu: float, sigma: float, k: int, max_limit: flo
 
 @pytest.mark.parametrize(
     "n,mu,sigma,adv_multiple",
-    [(3, 0.1, 0.2, 0.01), (15, 0.07, 0.05, 0.002), (20, 0.5, 0.8, 0.005)],
+    [(3, 0.1, 0.2, 0.001), (15, 0.07, 0.05, 0.002), (20, 0.5, 0.8, 0.005)],
 )
 def test_optimiser_max_adv(n: int, mu: float, sigma: float, adv_multiple: float):
     # GIVEN
     expected_returns, covariance_matrix = _get_return_and_covariance(n, mu, sigma)
+    logger.info(f"stocks mu: {expected_returns}")
     w_prev = np.full(n, 1.0) / n
-    volume = 1e6
+    nav = 1e6
     adv = np.random.uniform(1e6, 1e7, n)
 
     # WHEN
     eo = EquityOptimiser(expected_returns, covariance_matrix, w_prev)
-    eo.set_volume_adv_threshold(adv_multiple, volume, adv)
+    eo.set_volume_adv_threshold(adv_multiple, nav, adv)
     w_opt, mu_opt, sigma_opt = eo.optimise()
 
     # THEN
     assert w_opt.shape == (n,)
     assert np.isclose(np.sum(w_opt), 1, TOL)
 
-    volume_traded = np.abs(w_opt - w_prev) * volume
+    volume_traded = np.abs(w_opt - w_prev) * nav
     volume_allowed = adv_multiple * adv
-    volume_buffer = volume_allowed - volume_traded
-    assert np.all(volume_buffer + TOL * volume >= 0)
+    volume_buffer_left = volume_allowed - volume_traded
+    logger.info(f"{volume_traded}, {volume_allowed}, {volume_buffer_left}")
+    assert np.all(volume_buffer_left/nav + TOL >= 0)
 
 
 @pytest.mark.parametrize(
@@ -274,5 +277,7 @@ def test_risk_given_return():
     _, mu_high_risk, sigma_high_risk = eo.optimise_risk_given_return(min_ret=0.1)
 
     # THEN: Verify tradeoff
+    assert np.isclose(mu_low_risk, 0.07, TOL)
+    assert np.isclose(mu_high_risk, 0.1, TOL)
     assert mu_high_risk > mu_low_risk
     assert sigma_high_risk > sigma_low_risk

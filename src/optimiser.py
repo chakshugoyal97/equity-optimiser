@@ -117,8 +117,7 @@ class EquityOptimiser:
         then we cannot trade more than max_adv * adv-i of that stock.
         |w_delta| * volume <= max_ratio * max_adv
         :params:
-            limit: adv multiple limit that is allowed to be traded, for ex 0.05 if setting to 5% of ADV
-            w_prev: previous stock weights, should sum to 1 with shape (n,)
+            max_ratio: adv multiple limit that is allowed to be traded, for ex 0.05 if setting to 5% of ADV
             volume: Net Asset Value of the portfolio
             max_adv: market data - vector of adv traded per stock, should have shape (n,)
         """
@@ -181,7 +180,7 @@ class EquityOptimiser:
 
     # solve
     def optimise(
-        self, lambda_: float = 1.0, turnover_f_: float = 0, return_f_: float = 1.0
+        self, lambda_: float = 0.5, turnover_f_: float = 0, return_f_: float = 1.0
     ) -> Tuple[np.ndarray, float, float]:
         """
         Run optimiser and return optimal weights.
@@ -200,7 +199,7 @@ class EquityOptimiser:
         self._return_f.value = return_f_
 
         problem = cp.Problem(cp.Maximize(self._utility), self._constraints)
-        u = problem.solve()
+        u = problem.solve(solver="CLARABEL")
 
         if self._w.value is None:
             raise ValueError(
@@ -223,16 +222,14 @@ class EquityOptimiser:
         As long as minimum return is achieved, find the lowest risk.
         """
         self.set_min_return(min_ret)
-        self._return_f.value = 0
-        return self.optimise()
+        return self.optimise(return_f_=0)
 
     def optimise_return_given_risk(self, max_risk: float):
         """
         As long as risk/std_dev is within max_risk, find highest return
         """
         self.set_max_risk(max_risk)
-        self._lambda.value = 0
-        return self.optimise()
+        return self.optimise(lambda_=0)
 
     # helper function
     def clear_constraints(self):

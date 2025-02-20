@@ -70,7 +70,6 @@ def save_market_data(DATA_DIR):
     expected_returns = returns_df.mean() * 252
     covariance_matrix = returns_df.cov() * 252
     
-    # 5. Save data with ticker metadata
     # Save tickers as list, expected returns, covariance and volume  
     pd.Series(ticker_keys, name='Ticker').to_csv(DATA_DIR / "sp500_tickers.csv")
     expected_returns.rename('ExpectedReturn').to_csv(DATA_DIR / "expected_returns.csv")

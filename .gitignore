@@ -12,3 +12,4 @@ wheels/
 .coverage
 .ruff_check/
 .pytest_cache
+.ipynb_checkpoints
