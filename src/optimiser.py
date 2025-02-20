@@ -5,8 +5,8 @@ from typing import Optional, Tuple
 import cvxpy as cp
 import numpy as np
 
-import optimiser_validation_utils
-from optimiser_types import OptimiserOutput
+from src import optimiser_validation_utils
+from src.optimiser_types import OptimiserOutput
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class EquityOptimiser:
         """
         :params:
             expected_returns:
-                A vector (shape = (n,1)) of expected asset returns (mean vector).
+                A vector (shape = (n,)) of expected asset returns (mean vector).
                 Assume the returns are sampled from a normal distribution with typical stock mean and volatilities.
             covariance_matrix:
                 An (n,n) np array of covariance between asset returns. Should be positive semi-definite.
@@ -122,7 +122,7 @@ class EquityOptimiser:
             volume: Net Asset Value of the portfolio
             max_adv: market data - vector of adv traded per stock, should have shape (n,)
         """
-        optimiser_validation_utils.validate_adv(self._w_prev, adv, self._n, max_ratio)
+        optimiser_validation_utils.validate_adv(adv, self._n, max_ratio)
 
         volume_traded = cp.abs(self._w - self._w_prev) * volume
         volume_permissible = max_ratio * adv

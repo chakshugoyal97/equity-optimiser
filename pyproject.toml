@@ -1,5 +1,9 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "equity-optimiser"
+name = "equity_optimiser"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -7,12 +11,15 @@ requires-python = ">=3.12"
 dependencies = [
     "black>=25.1.0",
     "cvxpy>=1.6.0",
+    "ipykernel>=6.29.5",
+    "lxml>=5.3.1",
     "numpy>=2.2.3",
     "pandas>=2.2.3",
     "pytest>=8.3.4",
     "pytest-cov>=6.0.0",
     "ruff>=0.9.6",
     "scipy>=1.15.1",
+    "yfinance>=0.2.54",
 ]
 
 [tool.pytest.ini_options]
