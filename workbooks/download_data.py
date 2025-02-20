@@ -61,7 +61,7 @@ def save_market_data(DATA_DIR):
     
     # Calculate mean and covariance, roughly annualised by t=252
     # Note that this is if we assume that stock returns follow N(mu, sigma^2)
-    # And that each ri is an iid.
+    # And that ri's are iid.
     # For a stock, r1, r2, ..., rt are random variables that all follow N(mu, sigma^2)
     # r_ann is annualised return.
     # E(r_ann) = E(r_1 +...+ r_t) = E(r_1)+...+ E(r_t) = t*E(r_1) = t*mu
